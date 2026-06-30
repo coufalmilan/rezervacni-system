@@ -59,6 +59,7 @@
     <button class="admin-nav-btn" data-tab="rezervace">👤 Rezervace</button>
     <button class="admin-nav-btn" data-tab="vykazy">📊 Výkazy</button>
     <button class="admin-nav-btn" data-tab="export">⬇️ Export</button>
+    <button class="admin-nav-btn" data-tab="nastaveni">⚙️ Nastavení</button>
   </nav>
 
   <!-- Obsah záložek -->
@@ -246,6 +247,38 @@
         <p class="text-muted mt-1">Tento odkaz posílejte lektorům, aby se mohli zapisovat na vaše termíny:</p>
         <div id="odkaz-pro-lektory" style="margin-top:.75rem; padding:.75rem 1rem; background:var(--neutral-50); border:1px solid var(--neutral-200); border-radius:var(--radius-sm); font-family:monospace; font-size:.9rem; word-break:break-all;"></div>
         <button class="btn btn-secondary btn-sm mt-1" id="btn-kopirovat-odkaz">Kopírovat odkaz</button>
+      </div>
+    </div>
+
+    <!-- ── Záložka: NASTAVENÍ ─────────────────────────────────── -->
+    <div id="tab-nastaveni" class="tab-panel hidden">
+      <h2 style="margin-bottom:1rem;">Nastavení</h2>
+      <div class="card" style="max-width:420px;">
+        <h3 style="margin-bottom:1rem;">Změna hesla</h3>
+        <form id="form-heslo" novalidate>
+          <div class="form-group">
+            <label for="h-stare">Stávající heslo</label>
+            <input type="password" class="form-control" id="h-stare" autocomplete="current-password" required>
+          </div>
+          <div class="form-group">
+            <label for="h-nove">Nové heslo</label>
+            <input type="password" class="form-control" id="h-nove" autocomplete="new-password" required>
+            <small class="text-muted">Alespoň 8 znaků.</small>
+          </div>
+          <div class="form-group">
+            <label for="h-nove2">Nové heslo znovu</label>
+            <input type="password" class="form-control" id="h-nove2" autocomplete="new-password" required>
+          </div>
+          <div id="heslo-chyba" class="alert alert-error hidden mb-2">
+            <span class="alert-icon">⚠️</span>
+            <span id="heslo-chyba-text"></span>
+          </div>
+          <div id="heslo-ok" class="alert alert-success hidden mb-2">
+            <span class="alert-icon">✅</span>
+            Heslo bylo úspěšně změněno.
+          </div>
+          <button type="submit" class="btn btn-primary" id="btn-zmen-heslo">Změnit heslo</button>
+        </form>
       </div>
     </div>
 
@@ -754,6 +787,55 @@ async function init() {
 }
 
 init();
+
+// ─── Změna hesla ─────────────────────────────────────────────────────────────
+document.getElementById('form-heslo').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const btn = document.getElementById('btn-zmen-heslo');
+  const chybaEl = document.getElementById('heslo-chyba');
+  const chybaText = document.getElementById('heslo-chyba-text');
+  const okEl = document.getElementById('heslo-ok');
+
+  chybaEl.classList.add('hidden');
+  okEl.classList.add('hidden');
+
+  const heslo_stare = document.getElementById('h-stare').value;
+  const heslo_nove  = document.getElementById('h-nove').value;
+  const heslo_nove2 = document.getElementById('h-nove2').value;
+
+  if (heslo_nove !== heslo_nove2) {
+    chybaText.textContent = 'Nová hesla se neshodují.';
+    chybaEl.classList.remove('hidden');
+    return;
+  }
+  if (heslo_nove.length < 8) {
+    chybaText.textContent = 'Nové heslo musí mít alespoň 8 znaků.';
+    chybaEl.classList.remove('hidden');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Ukládám…';
+
+  try {
+    const { ok, data } = await api('POST', '/api/admin/change-password', { heslo_stare, heslo_nove });
+    if (ok) {
+      okEl.classList.remove('hidden');
+      document.getElementById('h-stare').value = '';
+      document.getElementById('h-nove').value  = '';
+      document.getElementById('h-nove2').value = '';
+    } else {
+      chybaText.textContent = data.chyba || 'Nepodařilo se změnit heslo.';
+      chybaEl.classList.remove('hidden');
+    }
+  } catch {
+    chybaText.textContent = 'Nepodařilo se připojit k serveru.';
+    chybaEl.classList.remove('hidden');
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Změnit heslo';
+});
 </script>
 
 </body>
