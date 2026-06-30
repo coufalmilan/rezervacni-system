@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin — Rezervační systém</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <meta name="robots" content="noindex,nofollow">
+</head>
+<body>
+
+<!-- ══ Přihlašovací obrazovka ══════════════════════════════════════════════ -->
+<div id="login-screen" class="hidden" style="min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--neutral-50); padding:1rem;">
+  <div style="width:100%; max-width:380px;">
+    <div style="text-align:center; margin-bottom:2rem;">
+      <h1 style="margin-bottom:.375rem;">Přihlášení</h1>
+      <p class="text-muted">Rezervační systém — správa termínů</p>
+    </div>
+    <div class="card">
+      <form id="login-form" novalidate>
+        <div class="form-group">
+          <label for="l-slug">Přihlašovací jméno</label>
+          <input type="text" class="form-control" id="l-slug" autocomplete="username"
+                 placeholder="jana" required>
+        </div>
+        <div class="form-group">
+          <label for="l-heslo">Heslo</label>
+          <input type="password" class="form-control" id="l-heslo" autocomplete="current-password" required>
+        </div>
+        <div id="login-chyba" class="alert alert-error hidden mb-2">
+          <span class="alert-icon">⚠️</span>
+          <span id="login-chyba-text"></span>
+        </div>
+        <button type="submit" class="btn btn-primary btn-lg" id="btn-login">
+          Přihlásit se
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Admin aplikace ═══════════════════════════════════════════════════════ -->
+<div id="admin-app" class="hidden admin-layout">
+
+  <!-- Horní lišta -->
+  <div class="admin-topbar">
+    <span class="admin-topbar-title">📋 Rezervační systém</span>
+    <div class="admin-topbar-user">
+      <span id="admin-jmeno">—</span>
+      <button class="btn btn-sm btn-secondary" id="btn-odhlasit" style="color:white; background:rgba(255,255,255,.15); border-color:rgba(255,255,255,.2);">
+        Odhlásit
+      </button>
+    </div>
+  </div>
+
+  <!-- Navigace záložek -->
+  <nav class="admin-nav">
+    <button class="admin-nav-btn active" data-tab="sloty">📅 Sloty</button>
+    <button class="admin-nav-btn" data-tab="rezervace">👤 Rezervace</button>
+    <button class="admin-nav-btn" data-tab="vykazy">📊 Výkazy</button>
+    <button class="admin-nav-btn" data-tab="export">⬇️ Export</button>
+  </nav>
+
+  <!-- Obsah záložek -->
+  <div class="admin-content">
+
+    <!-- ── Záložka: SLOTY ─────────────────────────────────────────── -->
+    <div id="tab-sloty" class="tab-panel">
+      <div class="section-header">
+        <h2>Správa termínů</h2>
+        <button class="btn btn-primary" id="btn-novy-slot">+ Přidat termín</button>
+      </div>
+
+      <!-- Formulář pro nový/editovaný slot -->
+      <div id="slot-form-wrap" class="card hidden mb-2">
+        <h3 id="slot-form-title" style="margin-bottom:1rem;">Nový termín</h3>
+        <form id="slot-form" novalidate>
+          <input type="hidden" id="sf-id">
+          <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:1rem;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="sf-datum">Datum</label>
+              <input type="date" class="form-control" id="sf-datum" required>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="sf-od">Čas od</label>
+              <input type="time" class="form-control" id="sf-od" required>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="sf-do">Čas do</label>
+              <input type="time" class="form-control" id="sf-do" required>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="sf-typ">Typ aktivity</label>
+              <select class="form-control" id="sf-typ" required>
+                <option value="">— vyberte —</option>
+                <option value="pohovor">Pohovor</option>
+                <option value="příprava">Příprava</option>
+                <option value="obvolávání">Obvolávání</option>
+                <option value="jiné">Jiné</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group mt-2">
+            <label for="sf-poznamka">Interní poznámka (lektoři ji nevidí)</label>
+            <input type="text" class="form-control" id="sf-poznamka" placeholder="Volitelně…" maxlength="200">
+          </div>
+          <div id="sf-chyba" class="alert alert-error hidden mb-2">
+            <span class="alert-icon">⚠️</span><span id="sf-chyba-text"></span>
+          </div>
+          <div class="flex gap-2">
+            <button type="submit" class="btn btn-primary" id="sf-submit">Uložit termín</button>
+            <button type="button" class="btn btn-secondary" id="sf-zrusit">Zrušit</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Přepínač: zobrazit zrušené -->
+      <div style="margin-bottom:.75rem; display:flex; align-items:center; gap:.75rem; flex-wrap:wrap;">
+        <label style="font-size:.875rem; color:var(--neutral-500); display:flex; align-items:center; gap:.4rem; cursor:pointer;">
+          <input type="checkbox" id="show-zrusene"> Zobrazit zrušené termíny
+        </label>
+        <label style="font-size:.875rem; color:var(--neutral-500);">
+          Filtr od:
+          <input type="date" id="filter-od" class="form-control" style="width:auto; display:inline-block; margin-left:.3rem; padding:.3rem .6rem; font-size:.875rem;">
+        </label>
+      </div>
+
+      <!-- Tabulka slotů -->
+      <div id="sloty-nacitam" style="text-align:center; padding:2rem;">
+        <span class="spinner"></span>
+      </div>
+      <div id="sloty-tabulka" class="hidden">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Datum</th>
+                <th>Čas</th>
+                <th>Typ</th>
+                <th>Stav</th>
+                <th>Poznámka</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="sloty-tbody"></tbody>
+          </table>
+        </div>
+        <p id="sloty-prazdno" class="text-muted mt-2 hidden" style="text-align:center; padding:1rem;">
+          Žádné termíny k zobrazení.
+        </p>
+      </div>
+    </div>
+
+    <!-- ── Záložka: REZERVACE ─────────────────────────────────────── -->
+    <div id="tab-rezervace" class="tab-panel hidden">
+      <div class="section-header">
+        <h2>Přehled rezervací</h2>
+        <button class="btn btn-secondary" id="btn-obnovit-rezervace">↻ Obnovit</button>
+      </div>
+
+      <div id="rez-nacitam" style="text-align:center; padding:2rem;">
+        <span class="spinner"></span>
+      </div>
+      <div id="rez-tabulka" class="hidden">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Datum</th>
+                <th>Čas</th>
+                <th>Typ</th>
+                <th>Jméno</th>
+                <th>E-mail</th>
+                <th>Telefon</th>
+                <th>Poznámka</th>
+                <th>Stav</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="rez-tbody"></tbody>
+          </table>
+        </div>
+        <p id="rez-prazdno" class="text-muted mt-2 hidden" style="text-align:center; padding:1rem;">
+          Zatím žádné rezervace.
+        </p>
+      </div>
+    </div>
+
+    <!-- ── Záložka: VÝKAZY ────────────────────────────────────────── -->
+    <div id="tab-vykazy" class="tab-panel hidden">
+      <div class="section-header">
+        <h2>Výkazy</h2>
+        <button class="btn btn-secondary" id="btn-obnovit-vykazy">↻ Obnovit</button>
+      </div>
+
+      <div id="vyk-nacitam" style="text-align:center; padding:2rem;">
+        <span class="spinner"></span>
+      </div>
+      <div id="vyk-obsah" class="hidden">
+        <!-- Souhrn -->
+        <div class="stats-grid" id="vyk-stats"></div>
+
+        <!-- Podle typu -->
+        <div class="card mb-2">
+          <h3 style="margin-bottom:1rem;">Hodiny podle typu aktivity</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Typ</th><th>Hodiny celkem</th></tr></thead>
+              <tbody id="vyk-typy"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Měsíční přehled -->
+        <div class="card">
+          <h3 style="margin-bottom:1rem;">Měsíční přehled</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Měsíc</th><th>Hodiny</th></tr></thead>
+              <tbody id="vyk-mesice"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Záložka: EXPORT ────────────────────────────────────────── -->
+    <div id="tab-export" class="tab-panel hidden">
+      <h2 style="margin-bottom:1rem;">Export dat</h2>
+      <div class="card">
+        <h3>Export rezervací do CSV</h3>
+        <p class="text-muted mt-1">
+          Stáhne všechny vaše rezervace (včetně zrušených) jako CSV soubor,
+          který lze otevřít v Excelu nebo Google Tabulkách.
+        </p>
+        <button class="btn btn-primary mt-2" id="btn-export-csv">
+          ⬇️ Stáhnout CSV
+        </button>
+        <div id="export-chyba" class="alert alert-error hidden mt-2">
+          <span class="alert-icon">⚠️</span>
+          <span id="export-chyba-text"></span>
+        </div>
+      </div>
+      <div class="card mt-2" style="border-color:var(--neutral-200);">
+        <h3>Odkaz pro lektory</h3>
+        <p class="text-muted mt-1">Tento odkaz posílejte lektorům, aby se mohli zapisovat na vaše termíny:</p>
+        <div id="odkaz-pro-lektory" style="margin-top:.75rem; padding:.75rem 1rem; background:var(--neutral-50); border:1px solid var(--neutral-200); border-radius:var(--radius-sm); font-family:monospace; font-size:.9rem; word-break:break-all;"></div>
+        <button class="btn btn-secondary btn-sm mt-1" id="btn-kopirovat-odkaz">Kopírovat odkaz</button>
+      </div>
+    </div>
+
+  </div><!-- /admin-content -->
+</div><!-- /admin-app -->
+
+<!-- ══ Dialog: potvrzení akce ═══════════════════════════════════════════════ -->
+<div id="confirm-overlay" class="overlay" role="dialog" aria-modal="true">
+  <div class="modal" style="max-width:380px;">
+    <h2 id="confirm-title" style="margin-bottom:.75rem;">Opravdu?</h2>
+    <p id="confirm-text" style="margin-bottom:1.5rem;"></p>
+    <div class="flex gap-2">
+      <button class="btn btn-danger" id="confirm-ok">Potvrdit</button>
+      <button class="btn btn-secondary" id="confirm-cancel">Zrušit</button>
+    </div>
+  </div>
+</div>
+
+<script src="/config.js"></script>
+<script>
+// ─── Stav aplikace ───────────────────────────────────────────────────────────
+let session = {
+  jmeno: null,
+  slug: null,
+  csrfToken: null,
+};
+
+let slotyData    = [];  // Načtené sloty
+let rezervaceData = []; // Načtené rezervace
+let slotyMap     = {};  // id → slot (pro rezervace)
+
+// ─── API helper ──────────────────────────────────────────────────────────────
+const BASE = () => window.API_BASE_URL || 'REPLACE_WITH_WORKER_URL';
+
+async function api(method, path, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (session.csrfToken && method !== 'GET') {
+    headers['X-CSRF-Token'] = session.csrfToken;
+  }
+  const res = await fetch(BASE() + path, {
+    method,
+    credentials: 'include',
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, status: res.status, data };
+}
+
+// ─── Přihlášení ──────────────────────────────────────────────────────────────
+document.getElementById('login-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const btn = document.getElementById('btn-login');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Přihlašuji…';
+  document.getElementById('login-chyba').classList.add('hidden');
+
+  const slug  = document.getElementById('l-slug').value.trim();
+  const heslo = document.getElementById('l-heslo').value;
+
+  try {
+    const { ok, data } = await api('POST', '/api/admin/login', { slug, heslo });
+    if (ok) {
+      session.jmeno     = data.jmeno;
+      session.slug      = slug;
+      session.csrfToken = data.csrfToken;
+      zobrazAdmin();
+    } else {
+      document.getElementById('login-chyba-text').textContent = data.chyba || 'Přihlášení selhalo.';
+      document.getElementById('login-chyba').classList.remove('hidden');
+    }
+  } catch {
+    document.getElementById('login-chyba-text').textContent = 'Nepodařilo se připojit k serveru.';
+    document.getElementById('login-chyba').classList.remove('hidden');
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Přihlásit se';
+});
+
+// ─── Odhlášení ───────────────────────────────────────────────────────────────
+document.getElementById('btn-odhlasit').addEventListener('click', async function() {
+  await api('POST', '/api/admin/logout');
+  session = { jmeno: null, slug: null, csrfToken: null };
+  document.getElementById('admin-app').classList.add('hidden');
+  document.getElementById('login-screen').classList.remove('hidden');
+  document.getElementById('l-heslo').value = '';
+});
+
+// ─── Zobrazení adminu ─────────────────────────────────────────────────────────
+function zobrazAdmin() {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('admin-app').classList.remove('hidden');
+  document.getElementById('admin-app').style.display = '';
+  document.getElementById('admin-jmeno').textContent = session.jmeno;
+
+  // Odkaz pro lektory
+  const odkaz = `${window.location.origin}/rezervace/${session.slug}`;
+  document.getElementById('odkaz-pro-lektory').textContent = odkaz;
+
+  nactiSloty();
+}
+
+// ─── Záložky ──────────────────────────────────────────────────────────────────
+document.querySelectorAll('.admin-nav-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    const tab = this.dataset.tab;
+    document.querySelectorAll('.admin-nav-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+    document.getElementById(`tab-${tab}`).classList.remove('hidden');
+
+    if (tab === 'rezervace' && rezervaceData.length === 0) nactiRezervace();
+    if (tab === 'vykazy') nactiVykazy();
+  });
+});
+
+// ─── SLOTY ────────────────────────────────────────────────────────────────────
+
+async function nactiSloty() {
+  document.getElementById('sloty-nacitam').style.display = 'block';
+  document.getElementById('sloty-tabulka').classList.add('hidden');
+
+  const { ok, data } = await api('GET', '/api/admin/sloty');
+  document.getElementById('sloty-nacitam').style.display = 'none';
+
+  if (!ok) { alert('Nepodařilo se načíst termíny: ' + (data.chyba || '')); return; }
+
+  slotyData = data.sloty || [];
+  slotyData.forEach(s => { slotyMap[s.id] = s; });
+  renderujSloty();
+}
+
+function renderujSloty() {
+  const showZrusene = document.getElementById('show-zrusene').checked;
+  const filterOd    = document.getElementById('filter-od').value;
+
+  let filtered = slotyData.filter(s => {
+    if (!showZrusene && s.stav === 'zrusen') return false;
+    if (filterOd && s.datum < filterOd) return false;
+    return true;
+  });
+
+  filtered.sort((a, b) => a.datum.localeCompare(b.datum) || a.cas_od.localeCompare(b.cas_od));
+
+  const tbody = document.getElementById('sloty-tbody');
+  tbody.innerHTML = '';
+
+  document.getElementById('sloty-prazdno').classList.toggle('hidden', filtered.length > 0);
+  document.getElementById('sloty-tabulka').classList.remove('hidden');
+
+  filtered.forEach(s => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${formatDatum(s.datum)}</td>
+      <td>${s.cas_od}–${s.cas_do}</td>
+      <td>${esc(s.typ)}</td>
+      <td>${stavBadge(s.stav)}</td>
+      <td class="text-muted">${esc(s.poznamka_interni)}</td>
+      <td class="td-actions">
+        ${s.stav !== 'zrusen' ? `
+          <button class="btn btn-sm btn-secondary" onclick="editujSlot('${s.id}')">Upravit</button>
+          <button class="btn btn-sm btn-danger" onclick="smazSlot('${s.id}')">Smazat</button>
+        ` : ''}
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById('show-zrusene').addEventListener('change', renderujSloty);
+document.getElementById('filter-od').addEventListener('change', renderujSloty);
+
+// Přidat nový slot
+document.getElementById('btn-novy-slot').addEventListener('click', function() {
+  document.getElementById('sf-id').value = '';
+  document.getElementById('slot-form').reset();
+  document.getElementById('slot-form-title').textContent = 'Nový termín';
+  document.getElementById('sf-submit').textContent = 'Uložit termín';
+  document.getElementById('sf-chyba').classList.add('hidden');
+  document.getElementById('slot-form-wrap').classList.remove('hidden');
+  document.getElementById('sf-datum').focus();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
+// Editace slotu
+function editujSlot(id) {
+  const s = slotyData.find(x => x.id === id);
+  if (!s) return;
+  document.getElementById('sf-id').value = s.id;
+  document.getElementById('sf-datum').value = s.datum;
+  document.getElementById('sf-od').value = s.cas_od;
+  document.getElementById('sf-do').value = s.cas_do;
+  document.getElementById('sf-typ').value = s.typ;
+  document.getElementById('sf-poznamka').value = s.poznamka_interni;
+  document.getElementById('slot-form-title').textContent = 'Upravit termín';
+  document.getElementById('sf-submit').textContent = 'Uložit změny';
+  document.getElementById('sf-chyba').classList.add('hidden');
+  document.getElementById('slot-form-wrap').classList.remove('hidden');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+document.getElementById('sf-zrusit').addEventListener('click', function() {
+  document.getElementById('slot-form-wrap').classList.add('hidden');
+});
+
+document.getElementById('slot-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const btn = document.getElementById('sf-submit');
+  btn.disabled = true;
+
+  const id      = document.getElementById('sf-id').value;
+  const payload = {
+    datum:            document.getElementById('sf-datum').value,
+    cas_od:           document.getElementById('sf-od').value,
+    cas_do:           document.getElementById('sf-do').value,
+    typ:              document.getElementById('sf-typ').value,
+    poznamka_interni: document.getElementById('sf-poznamka').value,
+  };
+
+  if (!payload.datum || !payload.cas_od || !payload.cas_do || !payload.typ) {
+    document.getElementById('sf-chyba-text').textContent = 'Vyplňte datum, čas a typ.';
+    document.getElementById('sf-chyba').classList.remove('hidden');
+    btn.disabled = false;
+    return;
+  }
+
+  const { ok, data } = id
+    ? await api('PUT', `/api/admin/sloty/${id}`, payload)
+    : await api('POST', '/api/admin/sloty', payload);
+
+  if (ok) {
+    document.getElementById('slot-form-wrap').classList.add('hidden');
+    document.getElementById('slot-form').reset();
+    await nactiSloty();
+  } else {
+    document.getElementById('sf-chyba-text').textContent = data.chyba || 'Chyba při ukládání.';
+    document.getElementById('sf-chyba').classList.remove('hidden');
+  }
+  btn.disabled = false;
+});
+
+// Smazání slotu
+function smazSlot(id) {
+  const s = slotyData.find(x => x.id === id);
+  if (!s) return;
+  if (s.stav === 'obsazeny') {
+    alert('Nelze smazat obsazený termín. Nejdřív zrušte rezervaci.');
+    return;
+  }
+  potvrdit(
+    'Smazat termín?',
+    `${formatDatum(s.datum)} ${s.cas_od}–${s.cas_do} bude označen jako zrušený.`,
+    async () => {
+      const { ok, data } = await api('DELETE', `/api/admin/sloty/${id}`);
+      if (ok) { await nactiSloty(); }
+      else { alert('Chyba: ' + (data.chyba || 'Neznámá chyba.')); }
+    }
+  );
+}
+
+// ─── REZERVACE ────────────────────────────────────────────────────────────────
+
+document.getElementById('btn-obnovit-rezervace').addEventListener('click', nactiRezervace);
+
+async function nactiRezervace() {
+  document.getElementById('rez-nacitam').style.display = 'block';
+  document.getElementById('rez-tabulka').classList.add('hidden');
+
+  const { ok, data } = await api('GET', '/api/admin/rezervace');
+  document.getElementById('rez-nacitam').style.display = 'none';
+
+  if (!ok) { alert('Nepodařilo se načíst rezervace: ' + (data.chyba || '')); return; }
+
+  rezervaceData = data.rezervace || [];
+  renderujRezervace();
+}
+
+function renderujRezervace() {
+  const tbody = document.getElementById('rez-tbody');
+  tbody.innerHTML = '';
+
+  document.getElementById('rez-prazdno').classList.toggle('hidden', rezervaceData.length > 0);
+  document.getElementById('rez-tabulka').classList.remove('hidden');
+
+  rezervaceData.forEach(r => {
+    const slot = slotyMap[r.slot_id] || {};
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${slot.datum ? formatDatum(slot.datum) : '—'}</td>
+      <td>${slot.cas_od ? `${slot.cas_od}–${slot.cas_do}` : '—'}</td>
+      <td>${esc(slot.typ || '—')}</td>
+      <td><strong>${esc(r.jmeno)}</strong></td>
+      <td><a href="mailto:${esc(r.email)}">${esc(r.email)}</a></td>
+      <td><a href="tel:${esc(r.telefon)}">${esc(r.telefon)}</a></td>
+      <td class="text-muted">${esc(r.poznamka)}</td>
+      <td>${rezStavBadge(r.stav)}</td>
+      <td class="td-actions">
+        ${r.stav === 'potvrzeno' ? `
+          <button class="btn btn-sm btn-danger" onclick="zrushRezervaci('${r.id}')">Zrušit</button>
+        ` : ''}
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function zrushRezervaci(id) {
+  const r = rezervaceData.find(x => x.id === id);
+  if (!r) return;
+  potvrdit(
+    'Zrušit rezervaci?',
+    `Rezervace lektora "${r.jmeno}" bude zrušena a termín bude znovu uvolněn.`,
+    async () => {
+      const { ok, data } = await api('PUT', `/api/admin/rezervace/${id}/zrusit`);
+      if (ok) {
+        await nactiSloty();
+        await nactiRezervace();
+      } else {
+        alert('Chyba: ' + (data.chyba || 'Neznámá chyba.'));
+      }
+    }
+  );
+}
+
+// ─── VÝKAZY ───────────────────────────────────────────────────────────────────
+
+document.getElementById('btn-obnovit-vykazy').addEventListener('click', nactiVykazy);
+
+async function nactiVykazy() {
+  document.getElementById('vyk-nacitam').style.display = 'block';
+  document.getElementById('vyk-obsah').classList.add('hidden');
+
+  const { ok, data } = await api('GET', '/api/admin/vykazy');
+  document.getElementById('vyk-nacitam').style.display = 'none';
+
+  if (!ok) { alert('Nepodařilo se načíst výkazy: ' + (data.chyba || '')); return; }
+
+  // Souhrné statistiky
+  const stats = document.getElementById('vyk-stats');
+  stats.innerHTML = `
+    <div class="stat-card">
+      <div class="stat-value">${data.celkem.slotu}</div>
+      <div class="stat-label">Termínů celkem</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${data.celkem.obsazenych}</div>
+      <div class="stat-label">Obsazených</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${data.celkem.rezervaci}</div>
+      <div class="stat-label">Potvrzených rezervací</div>
+    </div>
+  `;
+
+  // Podle typu
+  const typy = document.getElementById('vyk-typy');
+  typy.innerHTML = Object.entries(data.podle_typu)
+    .sort((a, b) => b[1] - a[1])
+    .map(([typ, h]) => `<tr><td>${esc(typ)}</td><td><strong>${h.toFixed(1)} h</strong></td></tr>`)
+    .join('') || '<tr><td colspan="2" class="text-muted">Žádná data</td></tr>';
+
+  // Měsíčně
+  const mesice = document.getElementById('vyk-mesice');
+  mesice.innerHTML = data.mesicni
+    .map(m => `<tr><td>${formatMesic(m.mesic)}</td><td><strong>${m.hodiny} h</strong></td></tr>`)
+    .join('') || '<tr><td colspan="2" class="text-muted">Žádná data</td></tr>';
+
+  document.getElementById('vyk-obsah').classList.remove('hidden');
+}
+
+// ─── EXPORT ───────────────────────────────────────────────────────────────────
+
+document.getElementById('btn-export-csv').addEventListener('click', async function() {
+  this.disabled = true;
+  this.textContent = '⏳ Připravuji…';
+  document.getElementById('export-chyba').classList.add('hidden');
+
+  try {
+    const res = await fetch(BASE() + '/api/admin/export', {
+      credentials: 'include',
+      headers: session.csrfToken ? { 'X-CSRF-Token': session.csrfToken } : {},
+    });
+
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.chyba || 'Chyba serveru');
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rezervace-export-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    document.getElementById('export-chyba-text').textContent = err.message;
+    document.getElementById('export-chyba').classList.remove('hidden');
+  }
+
+  this.disabled = false;
+  this.textContent = '⬇️ Stáhnout CSV';
+});
+
+document.getElementById('btn-kopirovat-odkaz').addEventListener('click', function() {
+  const text = document.getElementById('odkaz-pro-lektory').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    this.textContent = '✓ Zkopírováno!';
+    setTimeout(() => { this.textContent = 'Kopírovat odkaz'; }, 2000);
+  });
+});
+
+// ─── Dialog: potvrzení ────────────────────────────────────────────────────────
+let confirmCallback = null;
+
+function potvrdit(title, text, callback) {
+  document.getElementById('confirm-title').textContent = title;
+  document.getElementById('confirm-text').textContent = text;
+  confirmCallback = callback;
+  document.getElementById('confirm-overlay').classList.add('open');
+}
+
+document.getElementById('confirm-ok').addEventListener('click', async function() {
+  document.getElementById('confirm-overlay').classList.remove('open');
+  if (confirmCallback) await confirmCallback();
+  confirmCallback = null;
+});
+
+document.getElementById('confirm-cancel').addEventListener('click', function() {
+  document.getElementById('confirm-overlay').classList.remove('open');
+  confirmCallback = null;
+});
+
+document.getElementById('confirm-overlay').addEventListener('click', function(e) {
+  if (e.target === this) {
+    this.classList.remove('open');
+    confirmCallback = null;
+  }
+});
+
+// ─── Utility ─────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s || '')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+function formatDatum(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString('cs-CZ', { weekday: 'short', day: 'numeric', month: 'numeric', year: 'numeric' });
+}
+
+function formatMesic(ym) {
+  // "2025-03" → "březen 2025"
+  const [y, m] = ym.split('-');
+  const d = new Date(+y, +m - 1, 1);
+  return d.toLocaleDateString('cs-CZ', { month: 'long', year: 'numeric' });
+}
+
+function stavBadge(stav) {
+  const m = {
+    'volny':    '<span class="badge badge-green">volný</span>',
+    'obsazeny': '<span class="badge badge-blue">obsazený</span>',
+    'zrusen':   '<span class="badge badge-gray">zrušený</span>',
+  };
+  return m[stav] || `<span class="badge badge-gray">${esc(stav)}</span>`;
+}
+
+function rezStavBadge(stav) {
+  const m = {
+    'potvrzeno': '<span class="badge badge-green">potvrzeno</span>',
+    'zrušeno':   '<span class="badge badge-red">zrušeno</span>',
+  };
+  return m[stav] || `<span class="badge badge-gray">${esc(stav)}</span>`;
+}
+
+// ─── Inicializace ─────────────────────────────────────────────────────────────
+async function init() {
+  if (!window.API_BASE_URL || window.API_BASE_URL === 'REPLACE_WITH_WORKER_URL') {
+    // Zobrazit login se zprávou o neplatné konfiguraci
+    document.getElementById('login-screen').classList.remove('hidden');
+    document.getElementById('login-chyba-text').textContent = 'Web není nakonfigurován (chybí Worker URL v config.js). Viz SETUP.md.';
+    document.getElementById('login-chyba').classList.remove('hidden');
+    return;
+  }
+
+  // Zkusit obnovit session
+  try {
+    const { ok, data } = await api('GET', '/api/admin/me');
+    if (ok) {
+      session.jmeno     = data.jmeno;
+      session.slug      = data.slug;
+      session.csrfToken = data.csrfToken;
+      zobrazAdmin();
+      return;
+    }
+  } catch { /* Přihlašovací formulář */ }
+
+  document.getElementById('login-screen').classList.remove('hidden');
+}
+
+init();
+</script>
+
+</body>
+</html>

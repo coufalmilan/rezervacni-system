@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rezervace termínu</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <meta name="robots" content="noindex,nofollow">
+</head>
+<body>
+
+<!-- Hlavička -->
+<header class="page-header">
+  <div class="container">
+    <h1>Rezervace termínu pohovoru</h1>
+    <p id="header-subtitle">Načítám dostupné termíny…</p>
+  </div>
+</header>
+
+<main class="container" style="padding-bottom: 3rem;">
+
+  <!-- Stav: načítání -->
+  <div id="stav-nacitam" class="card" style="text-align:center; padding: 2.5rem;">
+    <span class="spinner"></span>
+    <p class="text-muted mt-2">Načítám dostupné termíny…</p>
+  </div>
+
+  <!-- Stav: chyba -->
+  <div id="stav-chyba" class="hidden">
+    <div class="alert alert-error">
+      <span class="alert-icon">⚠️</span>
+      <div>
+        <strong>Nepodařilo se načíst termíny.</strong>
+        <p id="chyba-text" class="mt-1"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stav: žádné sloty -->
+  <div id="stav-prazdno" class="hidden">
+    <div class="alert alert-info">
+      <span class="alert-icon">📅</span>
+      <div>
+        <strong>Momentálně nejsou k dispozici žádné volné termíny.</strong>
+        <p class="mt-1">Obraťte se prosím na auditorku pro více informací.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stav: úspěšná rezervace -->
+  <div id="stav-uspech" class="hidden">
+    <div class="alert alert-success" style="margin-bottom: 1rem;">
+      <span class="alert-icon">✅</span>
+      <div>
+        <strong>Termín byl úspěšně rezervován!</strong>
+        <p id="uspech-text" class="mt-1"></p>
+      </div>
+    </div>
+    <div class="card">
+      <h2 style="margin-bottom: .75rem;">Shrnutí vaší rezervace</h2>
+      <div id="uspech-detail"></div>
+    </div>
+  </div>
+
+  <!-- Stav: seznam slotů -->
+  <div id="stav-sloty" class="hidden">
+    <div class="card mb-2">
+      <p>Vyberte volný termín a vyplňte kontaktní údaje. Zvolený čas vám bude rezervován okamžitě.</p>
+    </div>
+    <div id="sloty-seznam"></div>
+  </div>
+
+</main>
+
+<!-- Modal: rezervační formulář -->
+<div id="overlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="modal-nadpis">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-nadpis">Vyplňte kontaktní údaje</h2>
+      <button class="modal-close" id="btn-zavrit" aria-label="Zavřít formulář">×</button>
+    </div>
+
+    <div class="alert alert-info" id="vybrano-info" style="margin-bottom: 1.25rem;">
+      <span class="alert-icon">📅</span>
+      <div id="vybrano-text"></div>
+    </div>
+
+    <form id="rez-form" novalidate>
+      <div class="form-group">
+        <label for="f-jmeno">Jméno a příjmení <span class="required">*</span></label>
+        <input type="text" class="form-control" id="f-jmeno" name="jmeno"
+               autocomplete="name" placeholder="Jan Novák" required>
+        <span class="field-error" id="e-jmeno"></span>
+      </div>
+
+      <div class="form-group">
+        <label for="f-email">E-mail <span class="required">*</span></label>
+        <input type="email" class="form-control" id="f-email" name="email"
+               autocomplete="email" placeholder="jan.novak@firma.cz" required>
+        <span class="field-error" id="e-email"></span>
+      </div>
+
+      <div class="form-group">
+        <label for="f-telefon">Telefon <span class="required">*</span></label>
+        <input type="tel" class="form-control" id="f-telefon" name="telefon"
+               autocomplete="tel" placeholder="+420 123 456 789" required>
+        <span class="field-error" id="e-telefon"></span>
+      </div>
+
+      <div class="form-group">
+        <label for="f-poznamka">Poznámka <span style="font-weight:400; color:var(--neutral-500)">(volitelné)</span></label>
+        <textarea class="form-control" id="f-poznamka" name="poznamka"
+                  rows="3" placeholder="Cokoliv, co chcete sdělit…" maxlength="500"></textarea>
+        <span class="field-error" id="e-poznamka"></span>
+      </div>
+
+      <!-- Chyba odesílání -->
+      <div id="form-chyba" class="alert alert-error hidden mb-2">
+        <span class="alert-icon">⚠️</span>
+        <span id="form-chyba-text"></span>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-lg" id="btn-odeslat">
+        Potvrdit rezervaci
+      </button>
+    </form>
+  </div>
+</div>
+
+<script src="/config.js"></script>
+<script>
+// ─── Stav aplikace ───────────────────────────────────────────────────────────
+let vybranySlot = null;      // Aktuálně vybraný slot
+let csrfToken   = null;       // Není potřeba pro veřejný endpoint, ale pro pořádek
+
+// ─── Utilita: formátování data ────────────────────────────────────────────────
+function formatDatum(iso) {
+  // iso = "2025-03-15" → "sobota 15. března 2025"
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString('cs-CZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+function formatCas(od, do_) {
+  return `${od}–${do_}`;
+}
+
+// ─── Validace (zrcadlí serverovou logiku) ─────────────────────────────────────
+function validujJmeno(v) {
+  if (!v.trim()) return 'Jméno je povinné.';
+  if (v.trim().length < 2) return 'Jméno musí mít alespoň 2 znaky.';
+  if (/^\d+$/.test(v.trim())) return 'Jméno nesmí být jen číslice.';
+  return null;
+}
+
+function validujEmail(v) {
+  if (!v.trim()) return 'E-mail je povinný.';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim())) return 'E-mail není ve správném formátu.';
+  return null;
+}
+
+function validujTelefon(v) {
+  if (!v.trim()) return 'Telefon je povinný.';
+  if (/[a-zA-ZáčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ]/i.test(v)) return 'Telefon nesmí obsahovat písmena.';
+  const norm = v.replace(/[\s\-\(\)\.]/g, '');
+  if (!/^(\+420|\+421|00420|00421)?[0-9]{9}$/.test(norm)) {
+    return 'Zadejte české nebo slovenské číslo (+420 nebo 9 číslic).';
+  }
+  return null;
+}
+
+function validujPoznamku(v) {
+  if (v.length > 500) return 'Poznámka nesmí být delší než 500 znaků.';
+  return null;
+}
+
+// ─── UI helpers ───────────────────────────────────────────────────────────────
+function zobrazChybu(id, text) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.textContent = text || '';
+    el.classList.toggle('visible', !!text);
+  }
+  const input = document.getElementById(id.replace('e-', 'f-'));
+  if (input) {
+    input.classList.toggle('is-invalid', !!text);
+    input.classList.toggle('is-valid', !text && input.value.trim() !== '');
+  }
+}
+
+function zobrazStav(id) {
+  ['stav-nacitam','stav-chyba','stav-prazdno','stav-uspech','stav-sloty']
+    .forEach(s => document.getElementById(s).classList.toggle('hidden', s !== id));
+}
+
+// ─── Načtení slotů ───────────────────────────────────────────────────────────
+async function nactiSloty() {
+  // Získat slug z URL: /rezervace/jana → "jana"
+  const slug = window.location.pathname.split('/')[2];
+
+  if (!slug) {
+    document.getElementById('chyba-text').textContent = 'Odkaz je neplatný — chybí identifikace auditorky.';
+    zobrazStav('stav-chyba');
+    return;
+  }
+
+  if (!window.API_BASE_URL || window.API_BASE_URL === 'REPLACE_WITH_WORKER_URL') {
+    document.getElementById('chyba-text').textContent = 'Web není správně nakonfigurován (chybí API URL). Kontaktujte správce.';
+    zobrazStav('stav-chyba');
+    return;
+  }
+
+  try {
+    const res = await fetch(`${window.API_BASE_URL}/api/sloty?auditorka=${encodeURIComponent(slug)}`);
+    const data = await res.json();
+
+    if (!res.ok) {
+      document.getElementById('chyba-text').textContent = data.chyba || 'Neznámá chyba serveru.';
+      zobrazStav('stav-chyba');
+      return;
+    }
+
+    // Nastavit jméno auditorky v hlavičce
+    document.getElementById('header-subtitle').textContent =
+      `Rezervujte si termín pohovoru s: ${data.auditorka.jmeno}`;
+    document.title = `Rezervace — ${data.auditorka.jmeno}`;
+
+    if (!data.sloty || data.sloty.length === 0) {
+      zobrazStav('stav-prazdno');
+      return;
+    }
+
+    renderujSloty(data.sloty);
+    zobrazStav('stav-sloty');
+
+  } catch (err) {
+    document.getElementById('chyba-text').textContent =
+      'Nepodařilo se připojit k serveru. Zkuste to prosím znovu za chvíli.';
+    zobrazStav('stav-chyba');
+  }
+}
+
+// ─── Vykreslení slotů ─────────────────────────────────────────────────────────
+function renderujSloty(sloty) {
+  // Seskupit podle data
+  const skupiny = {};
+  sloty.forEach(s => {
+    if (!skupiny[s.datum]) skupiny[s.datum] = [];
+    skupiny[s.datum].push(s);
+  });
+
+  const container = document.getElementById('sloty-seznam');
+  container.innerHTML = '';
+
+  Object.entries(skupiny).forEach(([datum, slotyDne]) => {
+    const skupina = document.createElement('div');
+    skupina.className = 'date-group';
+
+    const label = document.createElement('div');
+    label.className = 'date-label';
+    label.textContent = formatDatum(datum);
+    skupina.appendChild(label);
+
+    const grid = document.createElement('div');
+    grid.className = 'slots-grid';
+
+    slotyDne.forEach(slot => {
+      const btn = document.createElement('button');
+      btn.className = 'slot-btn';
+      btn.dataset.slotId = slot.id;
+      btn.innerHTML = `
+        <span class="slot-time">${formatCas(slot.cas_od, slot.cas_do)}</span>
+        <span class="slot-type">${escapeHtml(slot.typ)}</span>
+      `;
+      btn.addEventListener('click', () => otevriFormular(slot));
+      grid.appendChild(btn);
+    });
+
+    skupina.appendChild(grid);
+    container.appendChild(skupina);
+  });
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+// ─── Formulář ────────────────────────────────────────────────────────────────
+function otevriFormular(slot) {
+  vybranySlot = slot;
+
+  // Zvýraznit vybraný slot
+  document.querySelectorAll('.slot-btn').forEach(b =>
+    b.classList.toggle('selected', b.dataset.slotId === slot.id)
+  );
+
+  // Zobrazit info o slotu
+  document.getElementById('vybrano-text').innerHTML =
+    `<strong>${formatDatum(slot.datum)}</strong><br>${formatCas(slot.cas_od, slot.cas_do)} — ${escapeHtml(slot.typ)}`;
+
+  // Vyčistit formulář
+  document.getElementById('rez-form').reset();
+  ['jmeno','email','telefon','poznamka'].forEach(f => zobrazChybu('e-' + f, null));
+  document.getElementById('form-chyba').classList.add('hidden');
+
+  // Otevřít overlay
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById('f-jmeno').focus();
+  document.body.style.overflow = 'hidden';
+}
+
+function zavriFormular() {
+  document.getElementById('overlay').classList.remove('open');
+  document.body.style.overflow = '';
+  vybranySlot = null;
+  document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('selected'));
+}
+
+// ─── Odeslání formuláře ───────────────────────────────────────────────────────
+document.getElementById('rez-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+
+  const jmeno    = document.getElementById('f-jmeno').value;
+  const email    = document.getElementById('f-email').value;
+  const telefon  = document.getElementById('f-telefon').value;
+  const poznamka = document.getElementById('f-poznamka').value;
+
+  // Frontend validace
+  const errJmeno    = validujJmeno(jmeno);
+  const errEmail    = validujEmail(email);
+  const errTelefon  = validujTelefon(telefon);
+  const errPoznamka = validujPoznamku(poznamka);
+
+  zobrazChybu('e-jmeno',   errJmeno);
+  zobrazChybu('e-email',   errEmail);
+  zobrazChybu('e-telefon', errTelefon);
+  zobrazChybu('e-poznamka', errPoznamka);
+
+  if (errJmeno || errEmail || errTelefon || errPoznamka) return;
+
+  // Odeslat na server
+  const btn = document.getElementById('btn-odeslat');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Odesílám…';
+  document.getElementById('form-chyba').classList.add('hidden');
+
+  try {
+    const res = await fetch(`${window.API_BASE_URL}/api/rezervace`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        slot_id: vybranySlot.id,
+        jmeno, email, telefon, poznamka,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (res.ok && data.ok) {
+      // Úspěch
+      zavriFormular();
+      document.getElementById('uspech-text').textContent = data.zprava;
+      document.getElementById('uspech-detail').innerHTML = `
+        <p><strong>Datum:</strong> ${formatDatum(vybranySlot?.datum || '')}</p>
+        <p><strong>Čas:</strong> ${formatCas(vybranySlot?.cas_od || '', vybranySlot?.cas_do || '')}</p>
+        <p><strong>Jméno:</strong> ${escapeHtml(jmeno)}</p>
+        <p><strong>E-mail:</strong> ${escapeHtml(email)}</p>
+        <p><strong>Telefon:</strong> ${escapeHtml(telefon)}</p>
+      `;
+      zobrazStav('stav-uspech');
+
+    } else if (res.status === 422 && data.chyby) {
+      // Serverová validační chyba
+      Object.entries(data.chyby).forEach(([pole, text]) => {
+        zobrazChybu('e-' + pole, text);
+      });
+      btn.disabled = false;
+      btn.textContent = 'Potvrdit rezervaci';
+
+    } else if (res.status === 409) {
+      // Slot obsazený
+      const errEl = document.getElementById('form-chyba');
+      document.getElementById('form-chyba-text').textContent = data.chyba;
+      errEl.classList.remove('hidden');
+      btn.disabled = false;
+      btn.textContent = 'Potvrdit rezervaci';
+      // Znovu načíst sloty aby se aktualizoval seznam
+      setTimeout(() => { zavriFormular(); nactiSloty(); }, 2500);
+
+    } else {
+      throw new Error(data.chyba || 'Chyba serveru');
+    }
+
+  } catch (err) {
+    const errEl = document.getElementById('form-chyba');
+    document.getElementById('form-chyba-text').textContent =
+      err.message || 'Nepodařilo se odeslat formulář. Zkuste to prosím znovu.';
+    errEl.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'Potvrdit rezervaci';
+  }
+});
+
+// ─── Zavření modalu ───────────────────────────────────────────────────────────
+document.getElementById('btn-zavrit').addEventListener('click', zavriFormular);
+
+document.getElementById('overlay').addEventListener('click', function(e) {
+  if (e.target === this) zavriFormular();
+});
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') zavriFormular();
+});
+
+// ─── Spuštění ────────────────────────────────────────────────────────────────
+nactiSloty();
+</script>
+
+</body>
+</html>

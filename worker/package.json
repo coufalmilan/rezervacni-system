@@ -1,0 +1,14 @@
+{
+  "name": "rezervacni-system-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cloudflare Worker pro rezervační systém auditních pohovorů",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "hash": "node generate-hash.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
