@@ -6,5 +6,5 @@
  *
  * Jak zjistit Worker URL: viz SETUP.md, krok 4.
  */
-window.API_BASE_URL = 'REPLACE_WITH_WORKER_URL';
+window.API_BASE_URL = 'https://rezervacni-system.coufal-milan.workers.dev';
 // Příklad: window.API_BASE_URL = 'https://rezervacni-system.vas-ucet.workers.dev';
