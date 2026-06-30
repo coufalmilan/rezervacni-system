@@ -1,0 +1,20 @@
+# Závislosti
+node_modules/
+.pnpm-store/
+
+# Prostředí a secrets (NIKDY do repozitáře)
+.env
+.env.local
+.dev.vars
+
+# Wrangler
+.wrangler/
+worker/.wrangler/
+
+# Systémové soubory
+.DS_Store
+Thumbs.db
+
+# Logy
+*.log
+npm-debug.log*
