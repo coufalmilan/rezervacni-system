@@ -362,12 +362,13 @@ document.getElementById('rez-form').addEventListener('submit', async function(e)
     const data = await res.json();
 
     if (res.ok && data.ok) {
-      // Úspěch
+      // Úspěch — uložíme slot před zavřením formuláře (zavriFormular ho vynuluje)
+      const slot = vybranySlot;
       zavriFormular();
       document.getElementById('uspech-text').textContent = data.zprava;
       document.getElementById('uspech-detail').innerHTML = `
-        <p><strong>Datum:</strong> ${formatDatum(vybranySlot?.datum || '')}</p>
-        <p><strong>Čas:</strong> ${formatCas(vybranySlot?.cas_od || '', vybranySlot?.cas_do || '')}</p>
+        <p><strong>Datum:</strong> ${formatDatum(slot?.datum || '')}</p>
+        <p><strong>Čas:</strong> ${formatCas(slot?.cas_od || '', slot?.cas_do || '')}</p>
         <p><strong>Jméno:</strong> ${escapeHtml(jmeno)}</p>
         <p><strong>E-mail:</strong> ${escapeHtml(email)}</p>
         <p><strong>Telefon:</strong> ${escapeHtml(telefon)}</p>
