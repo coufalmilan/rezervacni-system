@@ -194,8 +194,10 @@ function zobrazStav(id) {
 
 // ─── Načtení slotů ───────────────────────────────────────────────────────────
 async function nactiSloty() {
-  // Získat slug z URL: /rezervace/jana → "jana"
-  const slug = window.location.pathname.split('/')[2];
+  // Získat slug z URL parametru: /rezervace/?auditorka=misa → "misa"
+  // (dříve bylo z cesty /rezervace/misa, ale Cloudflare Pages to nedoručovalo správně)
+  const params = new URLSearchParams(window.location.search);
+  const slug = params.get('auditorka');
 
   if (!slug) {
     document.getElementById('chyba-text').textContent = 'Odkaz je neplatný — chybí identifikace auditorky.';
