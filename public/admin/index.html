@@ -477,7 +477,7 @@ function zobrazAdmin() {
   document.getElementById('admin-jmeno').textContent = session.jmeno;
 
   // Odkaz pro lektory — zobrazí se v záložce Sloty
-  const odkaz = `${window.location.origin}/rezervace/${session.slug}`;
+  const odkaz = `${window.location.origin}/rezervace/?auditorka=${session.slug}`;
   document.getElementById('lektor-odkaz').textContent = odkaz;
 
   nactiSloty();
