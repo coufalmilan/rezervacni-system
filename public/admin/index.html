@@ -380,6 +380,7 @@ let session = {
   jmeno: null,
   slug: null,
   csrfToken: null,
+  token: null,   // Session token — posíláme jako Authorization: Bearer místo cookie
 };
 
 let slotyData    = [];  // Načtené sloty
@@ -391,6 +392,11 @@ const BASE = () => window.API_BASE_URL || 'REPLACE_WITH_WORKER_URL';
 
 async function api(method, path, body) {
   const headers = { 'Content-Type': 'application/json' };
+  // Posíláme token jako Authorization: Bearer — funguje cross-domain
+  // bez závislosti na cross-site cookies (které moderní prohlížeče blokují)
+  if (session.token) {
+    headers['Authorization'] = `Bearer ${session.token}`;
+  }
   if (session.csrfToken && method !== 'GET') {
     headers['X-CSRF-Token'] = session.csrfToken;
   }
@@ -421,6 +427,7 @@ document.getElementById('login-form').addEventListener('submit', async function(
       session.jmeno     = data.jmeno;
       session.slug      = slug;
       session.csrfToken = data.csrfToken;
+      session.token     = data.sessionToken;  // Uložíme token pro další requesty
       zobrazAdmin();
     } else {
       document.getElementById('login-chyba-text').textContent = data.chyba || 'Přihlášení selhalo.';
@@ -993,6 +1000,7 @@ async function init() {
       session.jmeno     = data.jmeno;
       session.slug      = data.slug;
       session.csrfToken = data.csrfToken;
+      session.token     = data.sessionToken;  // Uložíme token pro další requesty
       zobrazAdmin();
       return;
     }
