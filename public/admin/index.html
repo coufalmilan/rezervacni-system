@@ -6,6 +6,32 @@
   <title>Admin — Rezervační systém</title>
   <link rel="stylesheet" href="/assets/style.css">
   <meta name="robots" content="noindex,nofollow">
+  <style>
+    /* ── Mřížka slotů ─────────────────────────────────────────────── */
+    .grid-wrap { overflow-x: auto; border: 1px solid var(--neutral-200); border-radius: var(--radius-sm); }
+    .slot-grid { border-collapse: collapse; min-width: 100%; user-select: none; }
+    .slot-grid th, .slot-grid td { border: 1px solid var(--neutral-200); padding: 0; }
+    .grid-time-col { width: 50px; }
+    .grid-time-label { font-size: .72rem; color: var(--neutral-500); text-align: right; padding: 0 .4rem; white-space: nowrap; background: var(--neutral-50); }
+    .grid-day-col { text-align: center; padding: .3rem .2rem; font-size: .8rem; background: var(--neutral-50); min-width: 52px; }
+    .grid-day-col small { font-weight: normal; color: var(--neutral-500); display: block; }
+    .grid-weekend-head { background: var(--neutral-100) !important; color: var(--neutral-400); }
+    .grid-cell { height: 20px; cursor: pointer; transition: background .08s; }
+    .grid-cell:not(.grid-volny):not(.grid-obsazeny):hover { background: #dbeafe; }
+    .grid-cell.grid-selected { background: #2563eb !important; }
+    .grid-cell.grid-volny { background: #d1fae5; cursor: default; }
+    .grid-cell.grid-obsazeny { background: #fee2e2; cursor: default; }
+    .grid-cell.grid-weekend { background: var(--neutral-50); }
+    .grid-cell.grid-weekend:hover { background: var(--neutral-100); }
+    .grid-legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: .8rem; color: var(--neutral-600); align-items: center; }
+    .grid-legend-dot { width: 14px; height: 14px; border-radius: 2px; display: inline-block; vertical-align: middle; margin-right: .25rem; }
+    .grid-legend-dot.sel { background: #2563eb; }
+    .grid-legend-dot.vol { background: #d1fae5; border: 1px solid #6ee7b7; }
+    .grid-legend-dot.obs { background: #fee2e2; border: 1px solid #fca5a5; }
+    .dur-btn-group { display: flex; gap: .25rem; flex-wrap: wrap; }
+    .dur-btn { padding: .25rem .6rem; font-size: .8rem; border: 1px solid var(--neutral-300); border-radius: var(--radius-sm); background: white; cursor: pointer; }
+    .dur-btn.active { background: #2563eb; color: white; border-color: #2563eb; }
+  </style>
 </head>
 <body>
 
@@ -67,14 +93,64 @@
 
     <!-- ── Záložka: SLOTY ─────────────────────────────────────────── -->
     <div id="tab-sloty" class="tab-panel">
-      <div class="section-header">
-        <h2>Správa termínů</h2>
-        <button class="btn btn-primary" id="btn-novy-slot">+ Přidat termín</button>
+
+      <!-- Rychlé přidávání pomocí mřížky -->
+      <div class="card mb-2">
+        <h3 style="margin-bottom:1rem;">Rychlé přidávání termínů</h3>
+
+        <!-- Nastavení: typ + délka slotu -->
+        <div style="display:flex; flex-wrap:wrap; gap:1rem; align-items:flex-end; margin-bottom:1rem;">
+          <div class="form-group" style="margin:0; min-width:160px;">
+            <label for="grid-typ">Typ aktivity</label>
+            <select class="form-control" id="grid-typ">
+              <option value="">— vyberte —</option>
+              <option value="Pohovor">Pohovor</option>
+              <option value="Příprava">Příprava</option>
+              <option value="Obvolávání">Obvolávání</option>
+              <option value="Jiné">Jiné</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label>Délka slotu</label>
+            <div class="dur-btn-group">
+              <button class="dur-btn active" data-min="15">15 min</button>
+              <button class="dur-btn" data-min="20">20 min</button>
+              <button class="dur-btn" data-min="30">30 min</button>
+              <button class="dur-btn" data-min="45">45 min</button>
+              <button class="dur-btn" data-min="60">60 min</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Navigace týdnem -->
+        <div style="display:flex; align-items:center; gap:.75rem; margin-bottom:.75rem;">
+          <button class="btn btn-secondary btn-sm" id="grid-prev">← Předchozí</button>
+          <strong id="grid-week-label" style="flex:1; text-align:center; font-size:.95rem;"></strong>
+          <button class="btn btn-secondary btn-sm" id="grid-next">Další →</button>
+        </div>
+
+        <!-- Mřížka -->
+        <div class="grid-wrap">
+          <table id="slot-grid" class="slot-grid"></table>
+        </div>
+
+        <!-- Legenda + tlačítko -->
+        <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.75rem; margin-top:.75rem;">
+          <div class="grid-legend">
+            <span><span class="grid-legend-dot sel"></span>Vybráno</span>
+            <span><span class="grid-legend-dot vol"></span>Existující – volný</span>
+            <span><span class="grid-legend-dot obs"></span>Obsazený</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:.75rem;">
+            <span id="grid-hint" class="text-muted" style="font-size:.85rem;">Klikněte nebo táhněte pro výběr</span>
+            <button class="btn btn-primary" id="btn-vytvorit-sloty" disabled>Vytvořit sloty</button>
+          </div>
+        </div>
       </div>
 
-      <!-- Formulář pro nový/editovaný slot -->
+      <!-- Úprava existujícího slotu (skryté, otevře se z tabulky) -->
       <div id="slot-form-wrap" class="card hidden mb-2">
-        <h3 id="slot-form-title" style="margin-bottom:1rem;">Nový termín</h3>
+        <h3 id="slot-form-title" style="margin-bottom:1rem;">Upravit termín</h3>
         <form id="slot-form" novalidate>
           <input type="hidden" id="sf-id">
           <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:1rem;">
@@ -94,10 +170,10 @@
               <label for="sf-typ">Typ aktivity</label>
               <select class="form-control" id="sf-typ" required>
                 <option value="">— vyberte —</option>
-                <option value="pohovor">Pohovor</option>
-                <option value="příprava">Příprava</option>
-                <option value="obvolávání">Obvolávání</option>
-                <option value="jiné">Jiné</option>
+                <option value="Pohovor">Pohovor</option>
+                <option value="Příprava">Příprava</option>
+                <option value="Obvolávání">Obvolávání</option>
+                <option value="Jiné">Jiné</option>
               </select>
             </div>
           </div>
@@ -396,6 +472,156 @@ document.querySelectorAll('.admin-nav-btn').forEach(btn => {
   });
 });
 
+// ─── SLOT MŘÍŽKA ──────────────────────────────────────────────────────────────
+
+let gridWeekOffset = 0;
+let gridSelected   = new Set(); // Set klíčů "datum|cas_od|cas_do"
+let gridDuration   = 15;        // délka slotu v minutách
+
+function minutesToTime(m) {
+  return `${Math.floor(m / 60).toString().padStart(2,'0')}:${(m % 60).toString().padStart(2,'0')}`;
+}
+
+function getWeekStart(offset) {
+  const today = new Date();
+  const dow = today.getDay(); // 0=Ne
+  const diff = dow === 0 ? -6 : 1 - dow;
+  const mon = new Date(today);
+  mon.setDate(today.getDate() + diff + offset * 7);
+  mon.setHours(0,0,0,0);
+  return mon;
+}
+
+function buildGrid() {
+  const ws = getWeekStart(gridWeekOffset);
+  const we = new Date(ws); we.setDate(ws.getDate() + 6);
+  document.getElementById('grid-week-label').textContent =
+    `${ws.getDate()}.${ws.getMonth()+1}. – ${we.getDate()}.${we.getMonth()+1}. ${we.getFullYear()}`;
+
+  const dny = ['Po','Út','St','Čt','Pá','So','Ne'];
+  const table = document.getElementById('slot-grid');
+  table.innerHTML = '';
+
+  // Hlavička
+  const headTr = document.createElement('tr');
+  headTr.innerHTML = '<th class="grid-time-col grid-time-label"></th>';
+  for (let d = 0; d < 7; d++) {
+    const dt = new Date(ws); dt.setDate(ws.getDate() + d);
+    const th = document.createElement('th');
+    th.className = 'grid-day-col' + (d >= 5 ? ' grid-weekend-head' : '');
+    th.innerHTML = `${dny[d]}<small>${dt.getDate()}.${dt.getMonth()+1}.</small>`;
+    headTr.appendChild(th);
+  }
+  table.appendChild(headTr);
+
+  // Řádky (čas od 8:00 do 18:00)
+  for (let mins = 8*60; mins < 18*60; mins += gridDuration) {
+    const casOd = minutesToTime(mins);
+    const casDo = minutesToTime(Math.min(mins + gridDuration, 18*60));
+    const tr = document.createElement('tr');
+    const timeTd = document.createElement('td');
+    timeTd.className = 'grid-time-label';
+    timeTd.textContent = casOd;
+    tr.appendChild(timeTd);
+
+    for (let d = 0; d < 7; d++) {
+      const dt = new Date(ws); dt.setDate(ws.getDate() + d);
+      const datum = dt.toISOString().split('T')[0];
+      const key   = `${datum}|${casOd}|${casDo}`;
+      const exist = slotyData.find(s => s.datum === datum && s.cas_od === casOd && s.stav !== 'zrusen');
+      const td = document.createElement('td');
+      td.dataset.key   = key;
+      td.dataset.datum = datum;
+      td.dataset.od    = casOd;
+      td.dataset.do    = casDo;
+      if (exist) {
+        td.className = 'grid-cell ' + (exist.stav === 'obsazeny' ? 'grid-obsazeny' : 'grid-volny');
+        td.title = `${exist.typ || ''} — ${exist.stav}`;
+      } else {
+        td.className = 'grid-cell' + (d >= 5 ? ' grid-weekend' : '');
+        if (gridSelected.has(key)) td.classList.add('grid-selected');
+      }
+      tr.appendChild(td);
+    }
+    table.appendChild(tr);
+  }
+  updateGridCounter();
+}
+
+// Tažení myší pro výběr bloků
+let isDragging = false, dragMode = 'select';
+
+document.getElementById('slot-grid').addEventListener('mousedown', function(e) {
+  const td = e.target.closest('td[data-key]');
+  if (!td || td.classList.contains('grid-volny') || td.classList.contains('grid-obsazeny')) return;
+  e.preventDefault();
+  isDragging = true;
+  dragMode = gridSelected.has(td.dataset.key) ? 'deselect' : 'select';
+  applyDrag(td);
+});
+document.getElementById('slot-grid').addEventListener('mousemove', function(e) {
+  if (!isDragging) return;
+  const td = e.target.closest('td[data-key]');
+  if (td && !td.classList.contains('grid-volny') && !td.classList.contains('grid-obsazeny')) applyDrag(td);
+});
+document.addEventListener('mouseup', () => { isDragging = false; });
+
+function applyDrag(td) {
+  const key = td.dataset.key;
+  if (dragMode === 'select') { gridSelected.add(key); td.classList.add('grid-selected'); }
+  else { gridSelected.delete(key); td.classList.remove('grid-selected'); }
+  updateGridCounter();
+}
+
+function updateGridCounter() {
+  const n = gridSelected.size;
+  const btn = document.getElementById('btn-vytvorit-sloty');
+  const hint = document.getElementById('grid-hint');
+  btn.disabled = n === 0;
+  if (n === 0) { btn.textContent = 'Vytvořit sloty'; hint.textContent = 'Klikněte nebo táhněte pro výběr'; }
+  else {
+    const s = n === 1 ? 'slot' : n < 5 ? 'sloty' : 'slotů';
+    btn.textContent = `Vytvořit ${n} ${s}`;
+    hint.textContent = '';
+  }
+}
+
+// Délka slotu — přepínání
+document.querySelectorAll('.dur-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.dur-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    gridDuration = parseInt(this.dataset.min);
+    gridSelected.clear();
+    buildGrid();
+  });
+});
+
+// Navigace týdnem
+document.getElementById('grid-prev').addEventListener('click', () => { gridWeekOffset--; buildGrid(); });
+document.getElementById('grid-next').addEventListener('click', () => { gridWeekOffset++; buildGrid(); });
+
+// Vytvořit vybrané sloty
+document.getElementById('btn-vytvorit-sloty').addEventListener('click', async function() {
+  const typ = document.getElementById('grid-typ').value;
+  if (!typ) { alert('Vyberte nejprve typ aktivity.'); return; }
+  if (gridSelected.size === 0) return;
+  this.disabled = true;
+  this.textContent = '⏳ Vytváří se…';
+  const sloty = [...gridSelected].map(key => {
+    const [datum, cas_od, cas_do] = key.split('|');
+    return { datum, cas_od, cas_do, typ };
+  });
+  const { ok, data } = await api('POST', '/api/admin/sloty/bulk', { sloty });
+  if (ok) {
+    gridSelected.clear();
+    await nactiSloty(); // načte nová data + znovu sestaví mřížku
+  } else {
+    alert('Chyba: ' + (data.chyba || 'Neznámá chyba.'));
+  }
+  updateGridCounter();
+});
+
 // ─── SLOTY ────────────────────────────────────────────────────────────────────
 
 async function nactiSloty() {
@@ -410,6 +636,7 @@ async function nactiSloty() {
   slotyData = data.sloty || [];
   slotyData.forEach(s => { slotyMap[s.id] = s; });
   renderujSloty();
+  buildGrid(); // Aktualizuj mřížku s novými daty
 }
 
 function renderujSloty() {
@@ -451,18 +678,6 @@ function renderujSloty() {
 
 document.getElementById('show-zrusene').addEventListener('change', renderujSloty);
 document.getElementById('filter-od').addEventListener('change', renderujSloty);
-
-// Přidat nový slot
-document.getElementById('btn-novy-slot').addEventListener('click', function() {
-  document.getElementById('sf-id').value = '';
-  document.getElementById('slot-form').reset();
-  document.getElementById('slot-form-title').textContent = 'Nový termín';
-  document.getElementById('sf-submit').textContent = 'Uložit termín';
-  document.getElementById('sf-chyba').classList.add('hidden');
-  document.getElementById('slot-form-wrap').classList.remove('hidden');
-  document.getElementById('sf-datum').focus();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-});
 
 // Editace slotu
 function editujSlot(id) {
