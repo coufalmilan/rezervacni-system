@@ -1,4 +1,2 @@
-# Tento web je interní systém — nechceme indexování vyhledávači
 User-agent: *
-Disallow: /admin/
-Disallow: /rezervace/
+Disallow: /
