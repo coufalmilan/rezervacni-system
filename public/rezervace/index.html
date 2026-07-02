@@ -101,6 +101,21 @@
       </div>
 
       <div class="form-group">
+        <label>Způsob kontaktu <span class="required">*</span></label>
+        <div style="display:flex; gap:1.25rem; flex-wrap:wrap; margin-top:.25rem;">
+          <label style="display:flex; align-items:center; gap:.4rem; font-weight:400; cursor:pointer;">
+            <input type="radio" name="kontakt_zpusob" id="f-kontakt-telefon" value="telefon" checked>
+            Telefon
+          </label>
+          <label style="display:flex; align-items:center; gap:.4rem; font-weight:400; cursor:pointer;">
+            <input type="radio" name="kontakt_zpusob" id="f-kontakt-teams" value="teams">
+            Schůzka přes MS Teams
+          </label>
+        </div>
+        <span class="field-error" id="e-kontakt_zpusob"></span>
+      </div>
+
+      <div class="form-group" id="f-telefon-wrap">
         <label for="f-telefon">Telefon <span class="required">*</span></label>
         <input type="tel" class="form-control" id="f-telefon" name="telefon"
                autocomplete="tel" placeholder="+420 123 456 789" required>
@@ -167,6 +182,30 @@ function validujTelefon(v) {
   }
   return null;
 }
+
+function validujKontaktZpusob(v) {
+  if (v !== 'telefon' && v !== 'teams') return 'Vyberte způsob kontaktu.';
+  return null;
+}
+
+// ─── Přepínání pole "Telefon" podle zvoleného způsobu kontaktu ───────────────
+function zvolenyKontaktZpusob() {
+  const checked = document.querySelector('input[name="kontakt_zpusob"]:checked');
+  return checked ? checked.value : null;
+}
+
+function aktualizujTelefonPole() {
+  const jeTelefon = zvolenyKontaktZpusob() === 'telefon';
+  const wrap = document.getElementById('f-telefon-wrap');
+  const input = document.getElementById('f-telefon');
+  wrap.style.display = jeTelefon ? '' : 'none';
+  input.required = jeTelefon;
+  if (!jeTelefon) { zobrazChybu('e-telefon', null); input.value = ''; }
+}
+
+document.querySelectorAll('input[name="kontakt_zpusob"]').forEach(r => {
+  r.addEventListener('change', aktualizujTelefonPole);
+});
 
 function validujPoznamku(v) {
   if (v.length > 500) return 'Poznámka nesmí být delší než 500 znaků.';
@@ -271,7 +310,6 @@ function renderujSloty(sloty) {
       btn.dataset.slotId = slot.id;
       btn.innerHTML = `
         <span class="slot-time">${formatCas(slot.cas_od, slot.cas_do)}</span>
-        <span class="slot-type">${escapeHtml(slot.typ)}</span>
       `;
       btn.addEventListener('click', () => otevriFormular(slot));
       grid.appendChild(btn);
@@ -301,12 +339,13 @@ function otevriFormular(slot) {
 
   // Zobrazit info o slotu
   document.getElementById('vybrano-text').innerHTML =
-    `<strong>${formatDatum(slot.datum)}</strong><br>${formatCas(slot.cas_od, slot.cas_do)} — ${escapeHtml(slot.typ)}`;
+    `<strong>${formatDatum(slot.datum)}</strong><br>${formatCas(slot.cas_od, slot.cas_do)}`;
 
   // Vyčistit formulář
   document.getElementById('rez-form').reset();
-  ['jmeno','email','telefon','poznamka'].forEach(f => zobrazChybu('e-' + f, null));
+  ['jmeno','email','kontakt_zpusob','telefon','poznamka'].forEach(f => zobrazChybu('e-' + f, null));
   document.getElementById('form-chyba').classList.add('hidden');
+  aktualizujTelefonPole();
 
   // Otevřít overlay
   document.getElementById('overlay').classList.add('open');
@@ -325,23 +364,26 @@ function zavriFormular() {
 document.getElementById('rez-form').addEventListener('submit', async function(e) {
   e.preventDefault();
 
-  const jmeno    = document.getElementById('f-jmeno').value;
-  const email    = document.getElementById('f-email').value;
-  const telefon  = document.getElementById('f-telefon').value;
-  const poznamka = document.getElementById('f-poznamka').value;
+  const jmeno          = document.getElementById('f-jmeno').value;
+  const email          = document.getElementById('f-email').value;
+  const kontakt_zpusob = zvolenyKontaktZpusob();
+  const telefon        = document.getElementById('f-telefon').value;
+  const poznamka       = document.getElementById('f-poznamka').value;
 
-  // Frontend validace
+  // Frontend validace (zrcadlí serverovou — telefon je povinný jen při volbě "telefon")
   const errJmeno    = validujJmeno(jmeno);
   const errEmail    = validujEmail(email);
-  const errTelefon  = validujTelefon(telefon);
+  const errKontakt  = validujKontaktZpusob(kontakt_zpusob);
+  const errTelefon  = kontakt_zpusob === 'telefon' ? validujTelefon(telefon) : null;
   const errPoznamka = validujPoznamku(poznamka);
 
   zobrazChybu('e-jmeno',   errJmeno);
   zobrazChybu('e-email',   errEmail);
+  zobrazChybu('e-kontakt_zpusob', errKontakt);
   zobrazChybu('e-telefon', errTelefon);
   zobrazChybu('e-poznamka', errPoznamka);
 
-  if (errJmeno || errEmail || errTelefon || errPoznamka) return;
+  if (errJmeno || errEmail || errKontakt || errTelefon || errPoznamka) return;
 
   // Odeslat na server
   const btn = document.getElementById('btn-odeslat');
@@ -355,7 +397,9 @@ document.getElementById('rez-form').addEventListener('submit', async function(e)
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         slot_id: vybranySlot.id,
-        jmeno, email, telefon, poznamka,
+        jmeno, email, kontakt_zpusob,
+        telefon: kontakt_zpusob === 'telefon' ? telefon : '',
+        poznamka,
       }),
     });
 
@@ -371,7 +415,8 @@ document.getElementById('rez-form').addEventListener('submit', async function(e)
         <p><strong>Čas:</strong> ${formatCas(slot?.cas_od || '', slot?.cas_do || '')}</p>
         <p><strong>Jméno:</strong> ${escapeHtml(jmeno)}</p>
         <p><strong>E-mail:</strong> ${escapeHtml(email)}</p>
-        <p><strong>Telefon:</strong> ${escapeHtml(telefon)}</p>
+        <p><strong>Způsob kontaktu:</strong> ${kontakt_zpusob === 'teams' ? 'Schůzka přes MS Teams' : 'Telefon'}</p>
+        ${kontakt_zpusob === 'telefon' ? `<p><strong>Telefon:</strong> ${escapeHtml(telefon)}</p>` : ''}
       `;
       zobrazStav('stav-uspech');
 
