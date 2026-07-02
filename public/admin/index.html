@@ -116,18 +116,8 @@
       <div class="card mb-2">
         <h3 style="margin-bottom:1rem;">Rychlé přidávání termínů</h3>
 
-        <!-- Nastavení: typ + délka slotu -->
+        <!-- Nastavení: délka slotu (typ činnosti se u slotu nezadává — přiřadí se až u rezervace) -->
         <div style="display:flex; flex-wrap:wrap; gap:1rem; align-items:flex-end; margin-bottom:1rem;">
-          <div class="form-group" style="margin:0; min-width:160px;">
-            <label for="grid-typ">Typ aktivity</label>
-            <select class="form-control" id="grid-typ">
-              <option value="">— vyberte —</option>
-              <option value="Pohovor">Pohovor</option>
-              <option value="Příprava">Příprava</option>
-              <option value="Obvolávání">Obvolávání</option>
-              <option value="Jiné">Jiné</option>
-            </select>
-          </div>
           <div class="form-group" style="margin:0;">
             <label>Délka slotu</label>
             <div class="dur-btn-group">
@@ -184,16 +174,6 @@
               <label for="sf-do">Čas do</label>
               <input type="time" class="form-control" id="sf-do" required>
             </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label for="sf-typ">Typ aktivity</label>
-              <select class="form-control" id="sf-typ" required>
-                <option value="">— vyberte —</option>
-                <option value="Pohovor">Pohovor</option>
-                <option value="Příprava">Příprava</option>
-                <option value="Obvolávání">Obvolávání</option>
-                <option value="Jiné">Jiné</option>
-              </select>
-            </div>
           </div>
           <div class="form-group mt-2">
             <label for="sf-poznamka">Interní poznámka (lektoři ji nevidí)</label>
@@ -231,7 +211,6 @@
               <tr>
                 <th>Datum</th>
                 <th>Čas</th>
-                <th>Typ</th>
                 <th>Stav</th>
                 <th>Poznámka</th>
                 <th></th>
@@ -253,6 +232,78 @@
         <button class="btn btn-secondary" id="btn-obnovit-rezervace">↻ Obnovit</button>
       </div>
 
+      <!-- Panel: přiřazení typu činnosti -->
+      <div id="typ-form-wrap" class="card hidden mb-2">
+        <h3 style="margin-bottom:1rem;">Přiřadit typ činnosti</h3>
+        <form id="typ-form" novalidate>
+          <input type="hidden" id="tf-id">
+          <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:1rem;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="tf-typ">Typ činnosti</label>
+              <select class="form-control" id="tf-typ">
+                <option value="">— nepřiřazeno —</option>
+                <option value="Vstupní audit">Vstupní audit</option>
+                <option value="Kontrola hodnocení">Kontrola hodnocení</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="tf-firma">Firma / klient <span style="font-weight:400; color:var(--neutral-500)">(volitelné)</span></label>
+              <input type="text" class="form-control" id="tf-firma" maxlength="200">
+            </div>
+          </div>
+          <!-- Zobrazí se jen u "Kontrola hodnocení" -->
+          <div id="tf-kontrola-pole" class="hidden" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:1rem; margin-top:1rem;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="tf-kurz">Kurz</label>
+              <input type="text" class="form-control" id="tf-kurz" maxlength="200">
+            </div>
+            <div class="form-group" style="margin-bottom:0; display:flex; align-items:center;">
+              <label style="display:flex; align-items:center; gap:.4rem; font-weight:400; margin:0; cursor:pointer;">
+                <input type="checkbox" id="tf-kompetence"> Ostatní kompetence v pořádku
+              </label>
+            </div>
+          </div>
+          <div id="tf-chyba" class="alert alert-error hidden mt-2">
+            <span class="alert-icon">⚠️</span><span id="tf-chyba-text"></span>
+          </div>
+          <div class="flex gap-2 mt-2">
+            <button type="submit" class="btn btn-primary" id="tf-submit">Uložit</button>
+            <button type="button" class="btn btn-secondary" id="tf-zrusit">Zavřít</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Panel: Uskutečněno (překlopení do výkazu) -->
+      <div id="uskut-form-wrap" class="card hidden mb-2">
+        <h3 style="margin-bottom:1rem;">Označit jako uskutečněné</h3>
+        <form id="uskut-form" novalidate>
+          <input type="hidden" id="uf-id">
+          <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:1rem;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="uf-cas">Čas pro mzdu</label>
+              <select class="form-control" id="uf-cas">
+                <!-- Naplní se JS po 15 minutách -->
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label>Částka k výplatě</label>
+              <div class="form-control" id="uf-castka" style="background:var(--neutral-50); color:var(--neutral-500);">—</div>
+            </div>
+          </div>
+          <div class="form-group mt-2">
+            <label for="uf-vysledek">Výsledek / poznámka</label>
+            <textarea class="form-control" id="uf-vysledek" rows="3" maxlength="500"></textarea>
+          </div>
+          <div id="uf-chyba" class="alert alert-error hidden mt-2">
+            <span class="alert-icon">⚠️</span><span id="uf-chyba-text"></span>
+          </div>
+          <div class="flex gap-2 mt-2">
+            <button type="submit" class="btn btn-primary" id="uf-submit">Uložit jako uskutečněné</button>
+            <button type="button" class="btn btn-secondary" id="uf-zrusit">Zavřít</button>
+          </div>
+        </form>
+      </div>
+
       <div id="rez-nacitam" style="text-align:center; padding:2rem;">
         <span class="spinner"></span>
       </div>
@@ -263,10 +314,10 @@
               <tr>
                 <th>Datum</th>
                 <th>Čas</th>
-                <th>Typ</th>
                 <th>Jméno</th>
-                <th>E-mail</th>
-                <th>Telefon</th>
+                <th>Kontakt</th>
+                <th>Firma</th>
+                <th>Typ činnosti</th>
                 <th>Poznámka</th>
                 <th>Stav</th>
                 <th></th>
@@ -285,36 +336,87 @@
     <div id="tab-vykazy" class="tab-panel hidden">
       <div class="section-header">
         <h2>Výkazy</h2>
-        <button class="btn btn-secondary" id="btn-obnovit-vykazy">↻ Obnovit</button>
+        <div class="flex gap-2" style="align-items:center;">
+          <input type="month" id="vyk-mesic" class="form-control" style="width:auto;">
+          <button class="btn btn-secondary" id="btn-obnovit-vykazy">↻ Obnovit</button>
+        </div>
+      </div>
+
+      <!-- Ruční přidání položky Administrativa -->
+      <div class="card mb-2">
+        <h3 style="margin-bottom:1rem;">Přidat položku „Administrativa“</h3>
+        <p class="text-muted mt-1" style="margin-bottom:1rem;">
+          Pro úkony, které nevznikají z rezervace (např. „předchystávání tabulek“).
+        </p>
+        <form id="admin-form" novalidate>
+          <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap:1rem;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="af-datum">Datum</label>
+              <input type="date" class="form-control" id="af-datum" required>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="af-cas">Čas pro mzdu</label>
+              <select class="form-control" id="af-cas"></select>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="af-firma">Firma <span style="font-weight:400; color:var(--neutral-500)">(volitelné)</span></label>
+              <input type="text" class="form-control" id="af-firma" maxlength="200">
+            </div>
+          </div>
+          <div class="form-group mt-2">
+            <label for="af-popis">Popis úkonu</label>
+            <input type="text" class="form-control" id="af-popis" maxlength="500" required placeholder="Např. předchystávání tabulek">
+          </div>
+          <div id="af-chyba" class="alert alert-error hidden mt-2">
+            <span class="alert-icon">⚠️</span><span id="af-chyba-text"></span>
+          </div>
+          <button type="submit" class="btn btn-primary mt-2" id="af-submit">Přidat položku</button>
+        </form>
       </div>
 
       <div id="vyk-nacitam" style="text-align:center; padding:2rem;">
         <span class="spinner"></span>
       </div>
       <div id="vyk-obsah" class="hidden">
-        <!-- Souhrn -->
-        <div class="stats-grid" id="vyk-stats"></div>
-
-        <!-- Podle typu -->
+        <!-- Hlavička výkazu -->
         <div class="card mb-2">
-          <h3 style="margin-bottom:1rem;">Hodiny podle typu aktivity</h3>
+          <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap:1rem;">
+            <div><div class="text-muted" style="font-size:.75rem; text-transform:uppercase;">Metodik</div><strong id="vyk-h-metodik">—</strong></div>
+            <div><div class="text-muted" style="font-size:.75rem; text-transform:uppercase;">Období</div><strong id="vyk-h-obdobi">—</strong></div>
+            <div><div class="text-muted" style="font-size:.75rem; text-transform:uppercase;">Jazyk</div><strong id="vyk-h-jazyk">—</strong></div>
+            <div><div class="text-muted" style="font-size:.75rem; text-transform:uppercase;">Sazba Kč/60 min</div><strong id="vyk-h-sazba">—</strong></div>
+            <div><div class="text-muted" style="font-size:.75rem; text-transform:uppercase;">Celkem k výplatě</div><strong id="vyk-h-celkem" style="color:var(--primary);">—</strong></div>
+          </div>
+        </div>
+
+        <!-- Souhrn podle 3 kategorií -->
+        <div class="card mb-2">
+          <h3 style="margin-bottom:1rem;">Souhrn podle kategorií</h3>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Typ</th><th>Hodiny celkem</th></tr></thead>
-              <tbody id="vyk-typy"></tbody>
+              <thead><tr><th>Kategorie</th><th>Počet</th><th>Minuty</th><th>Kč</th></tr></thead>
+              <tbody id="vyk-souhrn"></tbody>
             </table>
           </div>
         </div>
 
-        <!-- Měsíční přehled -->
+        <!-- Řádky výkazu -->
         <div class="card">
-          <h3 style="margin-bottom:1rem;">Měsíční přehled</h3>
+          <h3 style="margin-bottom:1rem;">Položky výkazu</h3>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Měsíc</th><th>Hodiny</th></tr></thead>
-              <tbody id="vyk-mesice"></tbody>
+              <thead>
+                <tr>
+                  <th>Datum</th><th>Typ agendy</th><th>Jméno</th><th>Firma</th>
+                  <th>Čas od–do</th><th>Výsledek / poznámka</th><th>Min.</th><th>Kč</th>
+                </tr>
+              </thead>
+              <tbody id="vyk-radky"></tbody>
             </table>
           </div>
+          <p id="vyk-prazdno" class="text-muted mt-2 hidden" style="text-align:center; padding:1rem;">
+            Za vybraný měsíc zatím nejsou žádné uskutečněné položky.
+          </p>
         </div>
       </div>
     </div>
@@ -323,12 +425,16 @@
     <div id="tab-export" class="tab-panel hidden">
       <h2 style="margin-bottom:1rem;">Export dat</h2>
       <div class="card">
-        <h3>Export rezervací do CSV</h3>
+        <h3>Export výkazu do CSV</h3>
         <p class="text-muted mt-1">
-          Stáhne všechny vaše rezervace (včetně zrušených) jako CSV soubor,
+          Stáhne výkaz (stejné rozvržení jako v záložce Výkazy) jako CSV soubor,
           který lze otevřít v Excelu nebo Google Tabulkách.
         </p>
-        <button class="btn btn-primary mt-2" id="btn-export-csv">
+        <div class="form-group mt-2" style="max-width:220px;">
+          <label for="exp-mesic">Měsíc <span style="font-weight:400; color:var(--neutral-500)">(prázdné = export všeho)</span></label>
+          <input type="month" class="form-control" id="exp-mesic">
+        </div>
+        <button class="btn btn-primary mt-1" id="btn-export-csv">
           ⬇️ Stáhnout CSV
         </button>
         <div id="export-chyba" class="alert alert-error hidden mt-2">
@@ -404,6 +510,7 @@ let session = {
 let slotyData    = [];  // Načtené sloty
 let rezervaceData = []; // Načtené rezervace
 let slotyMap     = {};  // id → slot (pro rezervace)
+let auditorkaSazba = 0; // Kč/60 min přihlášené auditorky — pro dopočet částky u "Uskutečněno"
 
 // ─── API helper ──────────────────────────────────────────────────────────────
 const BASE = () => window.API_BASE_URL || 'REPLACE_WITH_WORKER_URL';
@@ -446,6 +553,7 @@ document.getElementById('login-form').addEventListener('submit', async function(
       session.slug      = slug;
       session.csrfToken = data.csrfToken;
       session.token     = data.sessionToken;  // Uložíme token pro další requesty
+      auditorkaSazba    = parseFloat(data.sazba_60min) || 0;
       zobrazAdmin();
     } else {
       document.getElementById('login-chyba-text').textContent = data.chyba || 'Přihlášení selhalo.';
@@ -561,7 +669,7 @@ function buildGrid() {
       td.dataset.do    = casDo;
       if (exist) {
         td.className = 'grid-cell ' + (exist.stav === 'obsazeny' ? 'grid-obsazeny' : 'grid-volny');
-        td.title = `${exist.typ || ''} — ${exist.stav}`;
+        td.title = exist.stav;
       } else {
         td.className = 'grid-cell' + (d >= 5 ? ' grid-weekend' : '');
         if (gridSelected.has(key)) td.classList.add('grid-selected');
@@ -628,14 +736,12 @@ document.getElementById('grid-next').addEventListener('click', () => { gridWeekO
 
 // Vytvořit vybrané sloty
 document.getElementById('btn-vytvorit-sloty').addEventListener('click', async function() {
-  const typ = document.getElementById('grid-typ').value;
-  if (!typ) { alert('Vyberte nejprve typ aktivity.'); return; }
   if (gridSelected.size === 0) return;
   this.disabled = true;
   this.textContent = '⏳ Vytváří se…';
   const sloty = [...gridSelected].map(key => {
     const [datum, cas_od, cas_do] = key.split('|');
-    return { datum, cas_od, cas_do, typ };
+    return { datum, cas_od, cas_do };
   });
   const { ok, data } = await api('POST', '/api/admin/sloty/bulk', { sloty });
   if (ok) {
@@ -687,7 +793,6 @@ function renderujSloty() {
     tr.innerHTML = `
       <td>${formatDatum(s.datum)}</td>
       <td>${s.cas_od}–${s.cas_do}</td>
-      <td>${esc(s.typ)}</td>
       <td>${stavBadge(s.stav)}</td>
       <td class="text-muted">${esc(s.poznamka_interni)}</td>
       <td class="td-actions">
@@ -712,7 +817,6 @@ function editujSlot(id) {
   document.getElementById('sf-datum').value = s.datum;
   document.getElementById('sf-od').value = s.cas_od;
   document.getElementById('sf-do').value = s.cas_do;
-  document.getElementById('sf-typ').value = s.typ;
   document.getElementById('sf-poznamka').value = s.poznamka_interni;
   document.getElementById('slot-form-title').textContent = 'Upravit termín';
   document.getElementById('sf-submit').textContent = 'Uložit změny';
@@ -735,12 +839,11 @@ document.getElementById('slot-form').addEventListener('submit', async function(e
     datum:            document.getElementById('sf-datum').value,
     cas_od:           document.getElementById('sf-od').value,
     cas_do:           document.getElementById('sf-do').value,
-    typ:              document.getElementById('sf-typ').value,
     poznamka_interni: document.getElementById('sf-poznamka').value,
   };
 
-  if (!payload.datum || !payload.cas_od || !payload.cas_do || !payload.typ) {
-    document.getElementById('sf-chyba-text').textContent = 'Vyplňte datum, čas a typ.';
+  if (!payload.datum || !payload.cas_od || !payload.cas_do) {
+    document.getElementById('sf-chyba-text').textContent = 'Vyplňte datum a čas.';
     document.getElementById('sf-chyba').classList.remove('hidden');
     btn.disabled = false;
     return;
@@ -807,23 +910,36 @@ function renderujRezervace() {
   rezervaceData.forEach(r => {
     const slot = slotyMap[r.slot_id] || {};
     const tr = document.createElement('tr');
+    const aktivni = r.stav === 'rezervovano';
     tr.innerHTML = `
       <td>${slot.datum ? formatDatum(slot.datum) : '—'}</td>
       <td>${slot.cas_od ? `${slot.cas_od}–${slot.cas_do}` : '—'}</td>
-      <td>${esc(slot.typ || '—')}</td>
       <td><strong>${esc(r.jmeno)}</strong></td>
-      <td><a href="mailto:${esc(r.email)}">${esc(r.email)}</a></td>
-      <td><a href="tel:${esc(r.telefon)}">${esc(r.telefon)}</a></td>
+      <td>${kontaktBunka(r)}</td>
+      <td class="text-muted">${esc(r.firma) || '—'}</td>
+      <td>${esc(r.typ_cinnosti) || '<span class="text-muted">— nepřiřazeno —</span>'}</td>
       <td class="text-muted">${esc(r.poznamka)}</td>
       <td>${rezStavBadge(r.stav)}</td>
       <td class="td-actions">
-        ${r.stav === 'potvrzeno' ? `
+        ${aktivni ? `
+          <button class="btn btn-sm btn-secondary" onclick="otevriTypForm('${r.id}')">Typ</button>
+          <button class="btn btn-sm btn-secondary" onclick="naplanovatRezervaci('${r.id}')">Potvrdit a naplánovat</button>
+          <button class="btn btn-sm btn-primary" onclick="otevriUskutForm('${r.id}')">Uskutečněno</button>
           <button class="btn btn-sm btn-danger" onclick="zrushRezervaci('${r.id}')">Zrušit</button>
         ` : ''}
       </td>
     `;
     tbody.appendChild(tr);
   });
+}
+
+// Sloupec "Kontakt" — e-mail vždy, plus telefon nebo odznak MS Teams podle volby lektora
+function kontaktBunka(r) {
+  const email = `<a href="mailto:${esc(r.email)}">${esc(r.email)}</a>`;
+  if (r.kontakt_zpusob === 'teams') {
+    return `${email}<br><span class="badge badge-blue">MS Teams</span>`;
+  }
+  return `${email}<br><a href="tel:${esc(r.telefon)}">${esc(r.telefon)}</a>`;
 }
 
 function zrushRezervaci(id) {
@@ -844,51 +960,246 @@ function zrushRezervaci(id) {
   );
 }
 
+// ─── Přiřazení typu činnosti ────────────────────────────────────────────────
+
+function otevriTypForm(id) {
+  const r = rezervaceData.find(x => x.id === id);
+  if (!r) return;
+  document.getElementById('uskut-form-wrap').classList.add('hidden');
+  document.getElementById('tf-id').value = id;
+  document.getElementById('tf-typ').value = r.typ_cinnosti || '';
+  document.getElementById('tf-firma').value = r.firma || '';
+  document.getElementById('tf-kurz').value = r.kurz || '';
+  document.getElementById('tf-kompetence').checked = r.ostatni_kompetence_ok === 'ano';
+  aktualizujKontrolaPole();
+  document.getElementById('tf-chyba').classList.add('hidden');
+  document.getElementById('typ-form-wrap').classList.remove('hidden');
+  document.getElementById('typ-form-wrap').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function aktualizujKontrolaPole() {
+  const jeKontrola = document.getElementById('tf-typ').value === 'Kontrola hodnocení';
+  document.getElementById('tf-kontrola-pole').classList.toggle('hidden', !jeKontrola);
+}
+document.getElementById('tf-typ').addEventListener('change', aktualizujKontrolaPole);
+
+document.getElementById('tf-zrusit').addEventListener('click', () => {
+  document.getElementById('typ-form-wrap').classList.add('hidden');
+});
+
+document.getElementById('typ-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const btn = document.getElementById('tf-submit');
+  btn.disabled = true;
+
+  const id = document.getElementById('tf-id').value;
+  const payload = {
+    typ_cinnosti: document.getElementById('tf-typ').value,
+    firma: document.getElementById('tf-firma').value,
+    kurz: document.getElementById('tf-kurz').value,
+    ostatni_kompetence_ok: document.getElementById('tf-kompetence').checked,
+  };
+
+  const { ok, data } = await api('PUT', `/api/admin/rezervace/${id}`, payload);
+  if (ok) {
+    document.getElementById('typ-form-wrap').classList.add('hidden');
+    await nactiRezervace();
+  } else {
+    document.getElementById('tf-chyba-text').textContent = data.chyba || 'Chyba při ukládání.';
+    document.getElementById('tf-chyba').classList.remove('hidden');
+  }
+  btn.disabled = false;
+});
+
+// ─── Potvrdit a naplánovat (e-mail + .ics, §8 zadání) ───────────────────────
+
+async function naplanovatRezervaci(id) {
+  const r = rezervaceData.find(x => x.id === id);
+  if (!r) return;
+  potvrdit(
+    'Potvrdit a naplánovat?',
+    `Lektorovi "${r.jmeno}" (kopie i vám) se odešle potvrzovací e-mail s pozvánkou do kalendáře.`,
+    async () => {
+      const { ok, data } = await api('POST', `/api/admin/rezervace/${id}/naplanovat`);
+      if (ok) {
+        alert(data.zprava || 'E-mail byl odeslán.');
+        await nactiRezervace();
+      } else {
+        alert('Chyba: ' + (data.chyba || 'Nepodařilo se odeslat e-mail.'));
+      }
+    }
+  );
+}
+
+// ─── Uskutečněno (překlopení do výkazu) ──────────────────────────────────────
+
+function naplnUfCas() {
+  const sel = document.getElementById('uf-cas');
+  sel.innerHTML = '';
+  for (let m = 15; m <= 240; m += 15) {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = m < 60 ? `${m} min` : `${Math.floor(m/60)} h${m % 60 ? ' ' + (m % 60) + ' min' : ''}`;
+    sel.appendChild(opt);
+  }
+}
+naplnUfCas();
+
+function aktualizujUfCastku() {
+  const min = parseInt(document.getElementById('uf-cas').value, 10) || 0;
+  const sazba = parseFloat(auditorkaSazba || 0);
+  const castka = Math.round((min / 60) * sazba * 100) / 100;
+  document.getElementById('uf-castka').textContent = sazba ? `${castka.toFixed(2)} Kč` : '— (sazba není nastavena)';
+}
+document.getElementById('uf-cas').addEventListener('change', aktualizujUfCastku);
+
+function otevriUskutForm(id) {
+  const r = rezervaceData.find(x => x.id === id);
+  if (!r) return;
+  if (!r.typ_cinnosti) {
+    alert('Nejdřív přiřaďte typ činnosti (tlačítko "Typ").');
+    otevriTypForm(id);
+    return;
+  }
+  document.getElementById('typ-form-wrap').classList.add('hidden');
+  document.getElementById('uf-id').value = id;
+  document.getElementById('uf-cas').value = '15';
+  document.getElementById('uf-vysledek').value = '';
+  document.getElementById('uf-chyba').classList.add('hidden');
+  aktualizujUfCastku();
+  document.getElementById('uskut-form-wrap').classList.remove('hidden');
+  document.getElementById('uskut-form-wrap').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+document.getElementById('uf-zrusit').addEventListener('click', () => {
+  document.getElementById('uskut-form-wrap').classList.add('hidden');
+});
+
+document.getElementById('uskut-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const btn = document.getElementById('uf-submit');
+  btn.disabled = true;
+
+  const id = document.getElementById('uf-id').value;
+  const payload = {
+    cas_pro_mzdu_min: document.getElementById('uf-cas').value,
+    vysledek: document.getElementById('uf-vysledek').value,
+  };
+
+  const { ok, data } = await api('POST', `/api/admin/rezervace/${id}/uskutecneno`, payload);
+  if (ok) {
+    document.getElementById('uskut-form-wrap').classList.add('hidden');
+    await nactiRezervace();
+  } else {
+    document.getElementById('uf-chyba-text').textContent = data.chyba || 'Chyba při ukládání.';
+    document.getElementById('uf-chyba').classList.remove('hidden');
+  }
+  btn.disabled = false;
+});
+
 // ─── VÝKAZY ───────────────────────────────────────────────────────────────────
 
+// Nastaví výchozí měsíc na aktuální (formát pro <input type="month"> je "RRRR-MM")
+function aktualniMesic() { return new Date().toISOString().slice(0, 7); }
+document.getElementById('vyk-mesic').value = aktualniMesic();
+
 document.getElementById('btn-obnovit-vykazy').addEventListener('click', nactiVykazy);
+document.getElementById('vyk-mesic').addEventListener('change', nactiVykazy);
+
+const NAZVY_KATEGORII = {
+  'Vstupní audit': 'Vstupní audit',
+  'Kontrola hodnocení': 'Kontrola hodnocení',
+  'Administrativa': 'Administrativa',
+};
 
 async function nactiVykazy() {
   document.getElementById('vyk-nacitam').style.display = 'block';
   document.getElementById('vyk-obsah').classList.add('hidden');
 
-  const { ok, data } = await api('GET', '/api/admin/vykazy');
+  const mesic = document.getElementById('vyk-mesic').value || aktualniMesic();
+  const { ok, data } = await api('GET', `/api/admin/vykazy?mesic=${mesic}`);
   document.getElementById('vyk-nacitam').style.display = 'none';
 
   if (!ok) { alert('Nepodařilo se načíst výkazy: ' + (data.chyba || '')); return; }
 
-  // Souhrné statistiky
-  const stats = document.getElementById('vyk-stats');
-  stats.innerHTML = `
-    <div class="stat-card">
-      <div class="stat-value">${data.celkem.slotu}</div>
-      <div class="stat-label">Termínů celkem</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value">${data.celkem.obsazenych}</div>
-      <div class="stat-label">Obsazených</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value">${data.celkem.rezervaci}</div>
-      <div class="stat-label">Potvrzených rezervací</div>
-    </div>
-  `;
+  // Hlavička
+  document.getElementById('vyk-h-metodik').textContent = data.hlavicka.metodik || '—';
+  document.getElementById('vyk-h-obdobi').textContent  = formatMesic(data.hlavicka.obdobi);
+  document.getElementById('vyk-h-jazyk').textContent   = data.hlavicka.jazyk || '—';
+  document.getElementById('vyk-h-sazba').textContent   = data.hlavicka.sazba_60min ? `${data.hlavicka.sazba_60min} Kč` : '—';
+  document.getElementById('vyk-h-celkem').textContent  = `${data.hlavicka.celkem_k_vyplate.toFixed(2)} Kč`;
 
-  // Podle typu
-  const typy = document.getElementById('vyk-typy');
-  typy.innerHTML = Object.entries(data.podle_typu)
-    .sort((a, b) => b[1] - a[1])
-    .map(([typ, h]) => `<tr><td>${esc(typ)}</td><td><strong>${h.toFixed(1)} h</strong></td></tr>`)
-    .join('') || '<tr><td colspan="2" class="text-muted">Žádná data</td></tr>';
+  // Souhrn podle kategorií
+  const souhrn = document.getElementById('vyk-souhrn');
+  souhrn.innerHTML = Object.entries(NAZVY_KATEGORII).map(([klic, nazev]) => {
+    const s = data.souhrn[klic] || { pocet: 0, minut: 0, castka: 0 };
+    return `<tr><td>${esc(nazev)}</td><td>${s.pocet}</td><td>${s.minut}</td><td>${s.castka.toFixed(2)}</td></tr>`;
+  }).join('');
 
-  // Měsíčně
-  const mesice = document.getElementById('vyk-mesice');
-  mesice.innerHTML = data.mesicni
-    .map(m => `<tr><td>${formatMesic(m.mesic)}</td><td><strong>${m.hodiny} h</strong></td></tr>`)
-    .join('') || '<tr><td colspan="2" class="text-muted">Žádná data</td></tr>';
+  // Jednotlivé řádky
+  const radky = document.getElementById('vyk-radky');
+  radky.innerHTML = data.radky.map(r => `
+    <tr>
+      <td>${formatDatum(r.datum)}</td>
+      <td>${esc(r.typ_agendy)}</td>
+      <td>${esc(r.jmeno) || '—'}</td>
+      <td>${esc(r.firma) || '—'}</td>
+      <td>${esc(r.cas_od_do) || '—'}</td>
+      <td class="text-muted">${esc(r.vysledek_poznamka)}</td>
+      <td>${r.cas_pro_mzdu_min}</td>
+      <td><strong>${r.k_vyplate.toFixed(2)}</strong></td>
+    </tr>
+  `).join('');
+  document.getElementById('vyk-prazdno').classList.toggle('hidden', data.radky.length > 0);
 
   document.getElementById('vyk-obsah').classList.remove('hidden');
 }
+
+// ─── Ruční přidání položky Administrativa ───────────────────────────────────
+
+function naplnCasSelect(id) {
+  const sel = document.getElementById(id);
+  sel.innerHTML = '';
+  for (let m = 15; m <= 240; m += 15) {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = m < 60 ? `${m} min` : `${Math.floor(m/60)} h${m % 60 ? ' ' + (m % 60) + ' min' : ''}`;
+    sel.appendChild(opt);
+  }
+}
+naplnCasSelect('af-cas');
+
+document.getElementById('admin-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const btn = document.getElementById('af-submit');
+  const chybaEl = document.getElementById('af-chyba');
+  chybaEl.classList.add('hidden');
+
+  const payload = {
+    datum: document.getElementById('af-datum').value,
+    cas_pro_mzdu_min: document.getElementById('af-cas').value,
+    firma: document.getElementById('af-firma').value,
+    vysledek_poznamka: document.getElementById('af-popis').value,
+  };
+  if (!payload.datum || !payload.vysledek_poznamka.trim()) {
+    document.getElementById('af-chyba-text').textContent = 'Vyplňte datum a popis úkonu.';
+    chybaEl.classList.remove('hidden');
+    return;
+  }
+
+  btn.disabled = true;
+  const { ok, data } = await api('POST', '/api/admin/administrativa', payload);
+  btn.disabled = false;
+
+  if (ok) {
+    document.getElementById('admin-form').reset();
+    naplnCasSelect('af-cas');
+    await nactiVykazy();
+  } else {
+    document.getElementById('af-chyba-text').textContent = data.chyba || 'Chyba při ukládání.';
+    chybaEl.classList.remove('hidden');
+  }
+});
 
 // ─── EXPORT ───────────────────────────────────────────────────────────────────
 
@@ -898,9 +1209,13 @@ document.getElementById('btn-export-csv').addEventListener('click', async functi
   document.getElementById('export-chyba').classList.add('hidden');
 
   try {
-    const res = await fetch(BASE() + '/api/admin/export', {
+    const mesic = document.getElementById('exp-mesic').value;
+    const qs = mesic ? `?mesic=${mesic}` : '';
+    const headers = session.csrfToken ? { 'X-CSRF-Token': session.csrfToken } : {};
+    if (session.token) headers['Authorization'] = `Bearer ${session.token}`;
+    const res = await fetch(BASE() + '/api/admin/export' + qs, {
       credentials: 'include',
-      headers: session.csrfToken ? { 'X-CSRF-Token': session.csrfToken } : {},
+      headers,
     });
 
     if (!res.ok) {
@@ -912,7 +1227,7 @@ document.getElementById('btn-export-csv').addEventListener('click', async functi
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `rezervace-export-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `vykaz-${mesic || 'vse'}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -995,8 +1310,9 @@ function stavBadge(stav) {
 
 function rezStavBadge(stav) {
   const m = {
-    'potvrzeno': '<span class="badge badge-green">potvrzeno</span>',
-    'zrušeno':   '<span class="badge badge-red">zrušeno</span>',
+    'rezervovano': '<span class="badge badge-blue">rezervováno</span>',
+    'uskutecneno': '<span class="badge badge-green">uskutečněno</span>',
+    'zruseno':     '<span class="badge badge-red">zrušeno</span>',
   };
   return m[stav] || `<span class="badge badge-gray">${esc(stav)}</span>`;
 }
@@ -1019,6 +1335,7 @@ async function init() {
       session.slug      = data.slug;
       session.csrfToken = data.csrfToken;
       session.token     = data.sessionToken;  // Uložíme token pro další requesty
+      auditorkaSazba    = parseFloat(data.sazba_60min) || 0;
       zobrazAdmin();
       return;
     }
