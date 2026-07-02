@@ -31,6 +31,17 @@
     .dur-btn-group { display: flex; gap: .25rem; flex-wrap: wrap; }
     .dur-btn { padding: .25rem .6rem; font-size: .8rem; border: 1px solid var(--neutral-300); border-radius: var(--radius-sm); background: white; cursor: pointer; }
     .dur-btn.active { background: #2563eb; color: white; border-color: #2563eb; }
+
+    /* ── Tabulka rezervací — pevné šířky sloupců, aby se vešla na celou obrazovku bez posuvníku ── */
+    .rez-table { table-layout: fixed; width: 100%; }
+    .rez-table th, .rez-table td { white-space: normal; word-break: break-word; overflow-wrap: break-word; }
+    .rez-table td.td-actions { white-space: normal; }
+    .rez-table .btn-sm { margin: .15rem .15rem .15rem 0; }
+
+    /* Barevné odlišení řádků podle stavu rezervace */
+    tr.rez-uskutecneno td { background: var(--success-light); }
+    tr.rez-zruseno td { background: var(--neutral-50); color: var(--neutral-500); }
+    tr.rez-zruseno a { color: var(--neutral-500); }
   </style>
 </head>
 <body>
@@ -232,53 +243,24 @@
         <button class="btn btn-secondary" id="btn-obnovit-rezervace">↻ Obnovit</button>
       </div>
 
-      <!-- Panel: přiřazení typu činnosti -->
-      <div id="typ-form-wrap" class="card hidden mb-2">
-        <h3 style="margin-bottom:1rem;">Přiřadit typ činnosti</h3>
-        <form id="typ-form" novalidate>
-          <input type="hidden" id="tf-id">
-          <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:1rem;">
+      <!-- Panel: Uskutečnit rezervaci — typ činnosti, firma, čas pro mzdu a výsledek v jednom kroku -->
+      <div id="uskut-form-wrap" class="card hidden mb-2">
+        <h3 style="margin-bottom:1rem;">Uskutečnit rezervaci</h3>
+        <form id="uskut-form" novalidate>
+          <input type="hidden" id="uf-id">
+          <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:1rem;">
             <div class="form-group" style="margin-bottom:0;">
-              <label for="tf-typ">Typ činnosti</label>
-              <select class="form-control" id="tf-typ">
-                <option value="">— nepřiřazeno —</option>
+              <label for="uf-typ">Typ činnosti</label>
+              <select class="form-control" id="uf-typ" required>
+                <option value="">— vyberte —</option>
                 <option value="Vstupní audit">Vstupní audit</option>
                 <option value="Kontrola hodnocení">Kontrola hodnocení</option>
               </select>
             </div>
             <div class="form-group" style="margin-bottom:0;">
-              <label for="tf-firma">Firma / klient <span style="font-weight:400; color:var(--neutral-500)">(volitelné)</span></label>
-              <input type="text" class="form-control" id="tf-firma" maxlength="200">
+              <label for="uf-firma">Firma / klient <span style="font-weight:400; color:var(--neutral-500)">(volitelné)</span></label>
+              <input type="text" class="form-control" id="uf-firma" maxlength="200">
             </div>
-          </div>
-          <!-- Zobrazí se jen u "Kontrola hodnocení" -->
-          <div id="tf-kontrola-pole" class="hidden" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:1rem; margin-top:1rem;">
-            <div class="form-group" style="margin-bottom:0;">
-              <label for="tf-kurz">Kurz</label>
-              <input type="text" class="form-control" id="tf-kurz" maxlength="200">
-            </div>
-            <div class="form-group" style="margin-bottom:0; display:flex; align-items:center;">
-              <label style="display:flex; align-items:center; gap:.4rem; font-weight:400; margin:0; cursor:pointer;">
-                <input type="checkbox" id="tf-kompetence"> Ostatní kompetence v pořádku
-              </label>
-            </div>
-          </div>
-          <div id="tf-chyba" class="alert alert-error hidden mt-2">
-            <span class="alert-icon">⚠️</span><span id="tf-chyba-text"></span>
-          </div>
-          <div class="flex gap-2 mt-2">
-            <button type="submit" class="btn btn-primary" id="tf-submit">Uložit</button>
-            <button type="button" class="btn btn-secondary" id="tf-zrusit">Zavřít</button>
-          </div>
-        </form>
-      </div>
-
-      <!-- Panel: Uskutečněno (překlopení do výkazu) -->
-      <div id="uskut-form-wrap" class="card hidden mb-2">
-        <h3 style="margin-bottom:1rem;">Označit jako uskutečněné</h3>
-        <form id="uskut-form" novalidate>
-          <input type="hidden" id="uf-id">
-          <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:1rem;">
             <div class="form-group" style="margin-bottom:0;">
               <label for="uf-cas">Čas pro mzdu</label>
               <select class="form-control" id="uf-cas">
@@ -288,6 +270,18 @@
             <div class="form-group" style="margin-bottom:0;">
               <label>Částka k výplatě</label>
               <div class="form-control" id="uf-castka" style="background:var(--neutral-50); color:var(--neutral-500);">—</div>
+            </div>
+          </div>
+          <!-- Zobrazí se jen u "Kontrola hodnocení" -->
+          <div id="uf-kontrola-pole" class="hidden" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:1rem; margin-top:1rem;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="uf-kurz">Kurz</label>
+              <input type="text" class="form-control" id="uf-kurz" maxlength="200">
+            </div>
+            <div class="form-group" style="margin-bottom:0; display:flex; align-items:center;">
+              <label style="display:flex; align-items:center; gap:.4rem; font-weight:400; margin:0; cursor:pointer;">
+                <input type="checkbox" id="uf-kompetence"> Ostatní kompetence v pořádku
+              </label>
             </div>
           </div>
           <div class="form-group mt-2">
@@ -309,16 +303,18 @@
       </div>
       <div id="rez-tabulka" class="hidden">
         <div class="table-wrap">
-          <table>
+          <table class="rez-table">
+            <colgroup>
+              <col style="width:12%"><col style="width:16%"><col style="width:19%">
+              <col style="width:12%"><col style="width:11%"><col style="width:9%"><col style="width:21%">
+            </colgroup>
             <thead>
               <tr>
-                <th>Datum</th>
-                <th>Čas</th>
+                <th>Termín</th>
                 <th>Jméno</th>
                 <th>Kontakt</th>
                 <th>Firma</th>
-                <th>Typ činnosti</th>
-                <th>Poznámka</th>
+                <th>Typ</th>
                 <th>Stav</th>
                 <th></th>
               </tr>
@@ -911,19 +907,16 @@ function renderujRezervace() {
     const slot = slotyMap[r.slot_id] || {};
     const tr = document.createElement('tr');
     const aktivni = r.stav === 'rezervovano';
+    tr.className = r.stav === 'uskutecneno' ? 'rez-uskutecneno' : r.stav === 'zruseno' ? 'rez-zruseno' : '';
     tr.innerHTML = `
-      <td>${slot.datum ? formatDatum(slot.datum) : '—'}</td>
-      <td>${slot.cas_od ? `${slot.cas_od}–${slot.cas_do}` : '—'}</td>
-      <td><strong>${esc(r.jmeno)}</strong></td>
+      <td>${slot.datum ? formatDatum(slot.datum) : '—'}${slot.cas_od ? `<br><span class="text-muted" style="font-size:.8rem;">${slot.cas_od}–${slot.cas_do}</span>` : ''}</td>
+      <td><strong>${esc(r.jmeno)}</strong>${r.poznamka ? `<br><span class="text-muted" style="font-size:.8rem;">${esc(r.poznamka)}</span>` : ''}</td>
       <td>${kontaktBunka(r)}</td>
       <td class="text-muted">${esc(r.firma) || '—'}</td>
-      <td>${esc(r.typ_cinnosti) || '<span class="text-muted">— nepřiřazeno —</span>'}</td>
-      <td class="text-muted">${esc(r.poznamka)}</td>
+      <td>${esc(r.typ_cinnosti) || '<span class="text-muted">—</span>'}</td>
       <td>${rezStavBadge(r.stav)}</td>
       <td class="td-actions">
         ${aktivni ? `
-          <button class="btn btn-sm btn-secondary" onclick="otevriTypForm('${r.id}')">Typ</button>
-          <button class="btn btn-sm btn-secondary" onclick="naplanovatRezervaci('${r.id}')">Potvrdit a naplánovat</button>
           <button class="btn btn-sm btn-primary" onclick="otevriUskutForm('${r.id}')">Uskutečněno</button>
           <button class="btn btn-sm btn-danger" onclick="zrushRezervaci('${r.id}')">Zrušit</button>
         ` : ''}
@@ -960,78 +953,9 @@ function zrushRezervaci(id) {
   );
 }
 
-// ─── Přiřazení typu činnosti ────────────────────────────────────────────────
-
-function otevriTypForm(id) {
-  const r = rezervaceData.find(x => x.id === id);
-  if (!r) return;
-  document.getElementById('uskut-form-wrap').classList.add('hidden');
-  document.getElementById('tf-id').value = id;
-  document.getElementById('tf-typ').value = r.typ_cinnosti || '';
-  document.getElementById('tf-firma').value = r.firma || '';
-  document.getElementById('tf-kurz').value = r.kurz || '';
-  document.getElementById('tf-kompetence').checked = r.ostatni_kompetence_ok === 'ano';
-  aktualizujKontrolaPole();
-  document.getElementById('tf-chyba').classList.add('hidden');
-  document.getElementById('typ-form-wrap').classList.remove('hidden');
-  document.getElementById('typ-form-wrap').scrollIntoView({ behavior: 'smooth', block: 'center' });
-}
-
-function aktualizujKontrolaPole() {
-  const jeKontrola = document.getElementById('tf-typ').value === 'Kontrola hodnocení';
-  document.getElementById('tf-kontrola-pole').classList.toggle('hidden', !jeKontrola);
-}
-document.getElementById('tf-typ').addEventListener('change', aktualizujKontrolaPole);
-
-document.getElementById('tf-zrusit').addEventListener('click', () => {
-  document.getElementById('typ-form-wrap').classList.add('hidden');
-});
-
-document.getElementById('typ-form').addEventListener('submit', async function(e) {
-  e.preventDefault();
-  const btn = document.getElementById('tf-submit');
-  btn.disabled = true;
-
-  const id = document.getElementById('tf-id').value;
-  const payload = {
-    typ_cinnosti: document.getElementById('tf-typ').value,
-    firma: document.getElementById('tf-firma').value,
-    kurz: document.getElementById('tf-kurz').value,
-    ostatni_kompetence_ok: document.getElementById('tf-kompetence').checked,
-  };
-
-  const { ok, data } = await api('PUT', `/api/admin/rezervace/${id}`, payload);
-  if (ok) {
-    document.getElementById('typ-form-wrap').classList.add('hidden');
-    await nactiRezervace();
-  } else {
-    document.getElementById('tf-chyba-text').textContent = data.chyba || 'Chyba při ukládání.';
-    document.getElementById('tf-chyba').classList.remove('hidden');
-  }
-  btn.disabled = false;
-});
-
-// ─── Potvrdit a naplánovat (e-mail + .ics, §8 zadání) ───────────────────────
-
-async function naplanovatRezervaci(id) {
-  const r = rezervaceData.find(x => x.id === id);
-  if (!r) return;
-  potvrdit(
-    'Potvrdit a naplánovat?',
-    `Lektorovi "${r.jmeno}" (kopie i vám) se odešle potvrzovací e-mail s pozvánkou do kalendáře.`,
-    async () => {
-      const { ok, data } = await api('POST', `/api/admin/rezervace/${id}/naplanovat`);
-      if (ok) {
-        alert(data.zprava || 'E-mail byl odeslán.');
-        await nactiRezervace();
-      } else {
-        alert('Chyba: ' + (data.chyba || 'Nepodařilo se odeslat e-mail.'));
-      }
-    }
-  );
-}
-
-// ─── Uskutečněno (překlopení do výkazu) ──────────────────────────────────────
+// ─── Uskutečnit rezervaci (typ činnosti + čas pro mzdu + výsledek v jednom kroku) ───
+// Potvrzovací e-mail se teď posílá automaticky hned po rezervaci — žádné samostatné
+// tlačítko "Potvrdit a naplánovat" už v adminu není potřeba.
 
 function naplnUfCas() {
   const sel = document.getElementById('uf-cas');
@@ -1053,16 +977,21 @@ function aktualizujUfCastku() {
 }
 document.getElementById('uf-cas').addEventListener('change', aktualizujUfCastku);
 
+function aktualizujUfKontrolaPole() {
+  const jeKontrola = document.getElementById('uf-typ').value === 'Kontrola hodnocení';
+  document.getElementById('uf-kontrola-pole').classList.toggle('hidden', !jeKontrola);
+}
+document.getElementById('uf-typ').addEventListener('change', aktualizujUfKontrolaPole);
+
 function otevriUskutForm(id) {
   const r = rezervaceData.find(x => x.id === id);
   if (!r) return;
-  if (!r.typ_cinnosti) {
-    alert('Nejdřív přiřaďte typ činnosti (tlačítko "Typ").');
-    otevriTypForm(id);
-    return;
-  }
-  document.getElementById('typ-form-wrap').classList.add('hidden');
   document.getElementById('uf-id').value = id;
+  document.getElementById('uf-typ').value = r.typ_cinnosti || '';
+  document.getElementById('uf-firma').value = r.firma || '';
+  document.getElementById('uf-kurz').value = r.kurz || '';
+  document.getElementById('uf-kompetence').checked = r.ostatni_kompetence_ok === 'ano';
+  aktualizujUfKontrolaPole();
   document.getElementById('uf-cas').value = '15';
   document.getElementById('uf-vysledek').value = '';
   document.getElementById('uf-chyba').classList.add('hidden');
@@ -1078,10 +1007,23 @@ document.getElementById('uf-zrusit').addEventListener('click', () => {
 document.getElementById('uskut-form').addEventListener('submit', async function(e) {
   e.preventDefault();
   const btn = document.getElementById('uf-submit');
-  btn.disabled = true;
+  const chybaEl = document.getElementById('uf-chyba');
+  chybaEl.classList.add('hidden');
 
+  const typ = document.getElementById('uf-typ').value;
+  if (!typ) {
+    document.getElementById('uf-chyba-text').textContent = 'Vyberte typ činnosti.';
+    chybaEl.classList.remove('hidden');
+    return;
+  }
+
+  btn.disabled = true;
   const id = document.getElementById('uf-id').value;
   const payload = {
+    typ_cinnosti: typ,
+    firma: document.getElementById('uf-firma').value,
+    kurz: document.getElementById('uf-kurz').value,
+    ostatni_kompetence_ok: document.getElementById('uf-kompetence').checked,
     cas_pro_mzdu_min: document.getElementById('uf-cas').value,
     vysledek: document.getElementById('uf-vysledek').value,
   };
@@ -1092,7 +1034,7 @@ document.getElementById('uskut-form').addEventListener('submit', async function(
     await nactiRezervace();
   } else {
     document.getElementById('uf-chyba-text').textContent = data.chyba || 'Chyba při ukládání.';
-    document.getElementById('uf-chyba').classList.remove('hidden');
+    chybaEl.classList.remove('hidden');
   }
   btn.disabled = false;
 });
