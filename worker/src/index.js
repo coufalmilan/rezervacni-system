@@ -594,7 +594,7 @@ async function handleGetSloty(req, env, hdrs) {
 }
 
 /** POST /api/rezervace — vytvoří rezervaci (veřejný endpoint) */
-async function handlePostRezervace(req, env, hdrs) {
+async function handlePostRezervace(req, env, hdrs, ctx) {
   let body;
   try { body = await req.json(); }
   catch { return jsonResp({ chyba: 'Neplatný formát požadavku.' }, 400, hdrs); }
@@ -639,7 +639,7 @@ async function handlePostRezervace(req, env, hdrs) {
   const id = genId();
   const telefonNorm = kontakt_zpusob === KONTAKT_TELEFON ? normTelefon(sanitize(telefon)) : '';
 
-  await sheetsAppend(env, SHEET_REZERVACE, objToRow(COLS_REZERVACE, {
+  const novaRezervace = {
     id,
     slot_id: slot.id,
     auditorka_id: slot.auditorka_id,
@@ -657,11 +657,24 @@ async function handlePostRezervace(req, env, hdrs) {
     kurz: '',
     ostatni_kompetence_ok: '',
     cas_pro_mzdu_min: '',
-  }));
+  };
+  await sheetsAppend(env, SHEET_REZERVACE, objToRow(COLS_REZERVACE, novaRezervace));
+
+  // Potvrzovací e-mail + .ics pozvánka se posílají automaticky, na pozadí (§8 zadání
+  // to jako alternativu k tlačítku výslovně dovoluje). ctx.waitUntil zajistí, že Worker
+  // počká s odesláním, ale lektor na to nečeká — dostane odpověď hned. Případná chyba
+  // e-mailové brány (např. výpadek Apps Scriptu) se jen zaloguje a rezervaci nijak nezruší.
+  if (ctx && typeof ctx.waitUntil === 'function') {
+    ctx.waitUntil(
+      posliPotvrzeni(env, novaRezervace, slot).catch(err => {
+        console.error('Automatické odeslání potvrzení selhalo:', err?.message || err);
+      })
+    );
+  }
 
   return jsonResp({
     ok: true,
-    zprava: `Termín ${slot.datum} ${slot.cas_od}–${slot.cas_do} byl úspěšně rezervován.`,
+    zprava: `Termín ${slot.datum} ${slot.cas_od}–${slot.cas_do} byl úspěšně rezervován. Na e-mail vám brzy dorazí potvrzení s pozvánkou do kalendáře.`,
     id,
   }, 201, hdrs);
 }
@@ -846,48 +859,12 @@ async function handleAdminGetRezervace(env, aud, hdrs) {
   return jsonResp({ rezervace: moje }, 200, hdrs);
 }
 
-/**
- * PUT /api/admin/rezervace/:id — auditorka přiřadí typ činnosti (a s ním
- * související pole firma / kurz / ostatní kompetence v pořádku).
- * Stav rezervace (zrušit / uskutečněno) se řeší dedikovanými endpointy níže,
- * aby v jedné metodě nešlo omylem přepsat business logiku (uvolnění slotu apod.).
- */
-async function handleAdminUpdateRezervace(req, env, aud, rezId, hdrs) {
-  let b; try { b = await req.json(); } catch { return jsonResp({ chyba: 'Neplatný požadavek.' }, 400, hdrs); }
-  const rezervace = await readSheet(env, SHEET_REZERVACE, COLS_REZERVACE);
-  const rez = rezervace.find(r => r.id === rezId && r.auditorka_id === aud.id);
-  if (!rez) return jsonResp({ chyba: 'Rezervace nenalezena.' }, 404, hdrs);
-
-  const typ = b.typ_cinnosti;
-  if (typ !== undefined && typ !== '' && typ !== TYP_VSTUPNI && typ !== TYP_KONTROLA) {
-    return jsonResp({ chyba: 'Neplatný typ činnosti.' }, 422, hdrs);
-  }
-
-  const novyTyp = typ !== undefined ? typ : rez.typ_cinnosti;
-  const jeKontrola = novyTyp === TYP_KONTROLA;
-
-  const updated = {
-    ...rez,
-    typ_cinnosti: novyTyp,
-    firma: b.firma !== undefined ? sanitize(b.firma).slice(0, 200) : rez.firma,
-    // Kurz a "ostatní kompetence v pořádku" dávají smysl jen u Kontroly hodnocení
-    kurz: jeKontrola ? sanitize(b.kurz || rez.kurz || '').slice(0, 200) : '',
-    ostatni_kompetence_ok: jeKontrola ? (b.ostatni_kompetence_ok !== undefined ? (b.ostatni_kompetence_ok ? 'ano' : 'ne') : rez.ostatni_kompetence_ok) : '',
-  };
-
-  const rowNum = await findRowNum(env, SHEET_REZERVACE, rez.id);
-  if (rowNum < 0) return jsonResp({ chyba: 'Interní chyba.' }, 500, hdrs);
-  await sheetsUpdateRow(env, SHEET_REZERVACE, rowNum, objToRow(COLS_REZERVACE, updated));
-
-  return jsonResp({ ok: true }, 200, hdrs);
-}
-
 /** PUT /api/admin/rezervace/:id/zrusit */
 async function handleAdminZrushRezervaci(env, aud, rezId, hdrs) {
   const rezervace = await readSheet(env, SHEET_REZERVACE, COLS_REZERVACE);
   const rez = rezervace.find(r => r.id === rezId && r.auditorka_id === aud.id);
   if (!rez) return jsonResp({ chyba: 'Rezervace nenalezena.' }, 404, hdrs);
-  if (rez.stav === REZ_ZRUSENO) return jsonResp({ chyba: 'Rezervace je již zrušená.' }, 409, hdrs);
+  if (rez.stav !== REZ_REZERVOVANO) return jsonResp({ chyba: 'Lze zrušit jen aktivní (dosud nevyřízenou) rezervaci.' }, 409, hdrs);
 
   // Zrušit rezervaci
   const rezRow = await findRowNum(env, SHEET_REZERVACE, rezId);
@@ -908,30 +885,23 @@ async function handleAdminZrushRezervaci(env, aud, rezId, hdrs) {
 }
 
 /**
- * POST /api/admin/rezervace/:id/naplanovat — §8 zadání:
- * pošle potvrzovací e-mail (+ .ics pozvánku do kalendáře) lektorovi (kopie auditorce).
+ * Sestaví a odešle potvrzovací e-mail s .ics pozvánkou pro danou rezervaci (§8 zadání).
  * Při volbě Teams se použije pevný osobní Teams odkaz auditorky z listu Auditorky.
  * Při volbě telefon se do pozvánky napíše "proběhne telefonicky" + telefon lektora.
+ *
+ * Používá se automaticky hned po vytvoření rezervace (viz handlePostRezervace) —
+ * proto nepotřebuje admin session a chyby vyhazuje jako výjimku (volající si je odchytí).
  */
-async function handleAdminNaplanovat(env, aud, rezId, hdrs) {
-  const rezervace = await readSheet(env, SHEET_REZERVACE, COLS_REZERVACE);
-  const rez = rezervace.find(r => r.id === rezId && r.auditorka_id === aud.id);
-  if (!rez) return jsonResp({ chyba: 'Rezervace nenalezena.' }, 404, hdrs);
-  if (rez.stav === REZ_ZRUSENO) return jsonResp({ chyba: 'Rezervace je zrušená, nelze naplánovat.' }, 409, hdrs);
-
-  const sloty = await readSheet(env, SHEET_SLOTY, COLS_SLOTY);
-  const slot = sloty.find(s => s.id === rez.slot_id);
-  if (!slot) return jsonResp({ chyba: 'Termín rezervace nenalezen.' }, 404, hdrs);
-
+async function posliPotvrzeni(env, rez, slot) {
   const auditorky = await readSheet(env, SHEET_AUDITORKY, COLS_AUDITORKY);
-  const auditorkaFull = auditorky.find(a => a.id === aud.id);
+  const auditorkaFull = auditorky.find(a => a.id === rez.auditorka_id);
   if (!auditorkaFull || !auditorkaFull.email) {
-    return jsonResp({ chyba: 'Auditorka nemá v listu Auditorky vyplněný e-mail.' }, 422, hdrs);
+    throw new Error(`Auditorka ${rez.auditorka_id} nemá v listu Auditorky vyplněný e-mail.`);
   }
 
   const jeTeams = rez.kontakt_zpusob === KONTAKT_TEAMS;
   if (jeTeams && !auditorkaFull.teams_odkaz) {
-    return jsonResp({ chyba: 'Auditorka nemá v listu Auditorky vyplněný Teams odkaz (sloupec teams_odkaz).' }, 422, hdrs);
+    throw new Error(`Auditorka ${rez.auditorka_id} nemá v listu Auditorky vyplněný Teams odkaz (sloupec teams_odkaz).`);
   }
 
   const datumTxt = formatDatumCz(slot.datum);
@@ -969,18 +939,14 @@ async function handleAdminNaplanovat(env, aud, rezId, hdrs) {
     attendeeEmail: rez.email, attendeeName: rez.jmeno,
   });
 
-  try {
-    await sendEmail(env, {
-      to: rez.email,
-      cc: auditorkaFull.email,
-      subject: predmet,
-      html,
-      icsContent: ics,
-      icsFilename: 'schuzka.ics',
-    });
-  } catch (err) {
-    return jsonResp({ chyba: `Nepodařilo se odeslat e-mail: ${err.message}` }, 502, hdrs);
-  }
+  await sendEmail(env, {
+    to: rez.email,
+    cc: auditorkaFull.email,
+    subject: predmet,
+    html,
+    icsContent: ics,
+    icsFilename: 'schuzka.ics',
+  });
 
   // U Teams schůzky uložíme použitý odkaz i k samotné rezervaci (pro přehled v adminu)
   if (jeTeams) {
@@ -989,13 +955,12 @@ async function handleAdminNaplanovat(env, aud, rezId, hdrs) {
       await sheetsUpdateRow(env, SHEET_REZERVACE, rowNum, objToRow(COLS_REZERVACE, { ...rez, teams_odkaz: auditorkaFull.teams_odkaz }));
     }
   }
-
-  return jsonResp({ ok: true, zprava: 'E-mail s pozvánkou byl odeslán lektorovi (kopie vám).' }, 200, hdrs);
 }
 
 /**
- * POST /api/admin/rezervace/:id/uskutecneno — §10/§11 zadání:
- * překlopí rezervaci do výkazu. Vyžaduje, aby už byl přiřazený typ činnosti.
+ * POST /api/admin/rezervace/:id/uskutecneno — §10/§11 zadání.
+ * V jednom kroku: přiřadí typ činnosti (+ firma / kurz / ostatní kompetence u Kontroly
+ * hodnocení), zapíše čas pro mzdu a výsledek/poznámku, a překlopí rezervaci do výkazu.
  */
 async function handleAdminUskutecneno(req, env, aud, rezId, hdrs) {
   let b; try { b = await req.json(); } catch { return jsonResp({ chyba: 'Neplatný požadavek.' }, 400, hdrs); }
@@ -1003,8 +968,12 @@ async function handleAdminUskutecneno(req, env, aud, rezId, hdrs) {
   const rezervace = await readSheet(env, SHEET_REZERVACE, COLS_REZERVACE);
   const rez = rezervace.find(r => r.id === rezId && r.auditorka_id === aud.id);
   if (!rez) return jsonResp({ chyba: 'Rezervace nenalezena.' }, 404, hdrs);
-  if (rez.stav === REZ_ZRUSENO) return jsonResp({ chyba: 'Zrušenou rezervaci nelze označit jako uskutečněnou.' }, 409, hdrs);
-  if (!rez.typ_cinnosti) return jsonResp({ chyba: 'Nejdřív přiřaďte typ činnosti (Vstupní audit / Kontrola hodnocení).' }, 422, hdrs);
+  if (rez.stav !== REZ_REZERVOVANO) return jsonResp({ chyba: 'Lze uskutečnit jen aktivní (dosud nevyřízenou) rezervaci.' }, 409, hdrs);
+
+  const typ = b.typ_cinnosti;
+  if (typ !== TYP_VSTUPNI && typ !== TYP_KONTROLA) {
+    return jsonResp({ chyba: 'Vyberte typ činnosti (Vstupní audit / Kontrola hodnocení).' }, 422, hdrs);
+  }
 
   const chybaCas = validateCasProMzdu(b.cas_pro_mzdu_min);
   if (chybaCas) return jsonResp({ chyba: chybaCas }, 422, hdrs);
@@ -1012,10 +981,22 @@ async function handleAdminUskutecneno(req, env, aud, rezId, hdrs) {
   const vysledek = sanitize(b.vysledek || '');
   if (!vysledek) return jsonResp({ chyba: 'Vyplňte výsledek / poznámku pro výkaz.' }, 422, hdrs);
 
+  const jeKontrola = typ === TYP_KONTROLA;
+
   const rowNum = await findRowNum(env, SHEET_REZERVACE, rez.id);
   if (rowNum < 0) return jsonResp({ chyba: 'Interní chyba.' }, 500, hdrs);
 
-  const updated = { ...rez, stav: REZ_USKUTECNENO, vysledek, cas_pro_mzdu_min: String(parseInt(b.cas_pro_mzdu_min, 10)) };
+  const updated = {
+    ...rez,
+    typ_cinnosti: typ,
+    firma: sanitize(b.firma || '').slice(0, 200),
+    // Kurz a "ostatní kompetence v pořádku" dávají smysl jen u Kontroly hodnocení
+    kurz: jeKontrola ? sanitize(b.kurz || '').slice(0, 200) : '',
+    ostatni_kompetence_ok: jeKontrola ? (b.ostatni_kompetence_ok ? 'ano' : 'ne') : '',
+    stav: REZ_USKUTECNENO,
+    vysledek,
+    cas_pro_mzdu_min: String(parseInt(b.cas_pro_mzdu_min, 10)),
+  };
   await sheetsUpdateRow(env, SHEET_REZERVACE, rowNum, objToRow(COLS_REZERVACE, updated));
 
   return jsonResp({ ok: true }, 200, hdrs);
@@ -1191,7 +1172,7 @@ async function handleAdminExport(req, env, aud, hdrs) {
 // ════════════════════════════════════════════════════════════════
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const url    = new URL(req.url);
     const method = req.method;
     const path   = url.pathname;
@@ -1218,7 +1199,7 @@ export default {
         if (!checkRateLimit(ip, 'rezervace', 5, 60_000)) {
           return jsonResp({ chyba: 'Příliš mnoho požadavků. Zkuste to za chvíli.' }, 429, hdrs);
         }
-        return await handlePostRezervace(req, env, hdrs);
+        return await handlePostRezervace(req, env, hdrs, ctx);
       }
 
       // ── Admin přihlášení ───────────────────────────────────
@@ -1273,7 +1254,7 @@ export default {
         if (method === 'DELETE') return await handleAdminDeleteSlot(env, aud, mSlot[1], hdrs);
       }
 
-      // Rezervace — nejdřív konkrétnější cesty (/zrusit, /naplanovat, /uskutecneno), pak obecná /:id
+      // Rezervace — nejdřív konkrétnější cesty (/zrusit, /uskutecneno), pak obecné
       if (path === '/api/admin/rezervace' && method === 'GET') {
         return await handleAdminGetRezervace(env, aud, hdrs);
       }
@@ -1281,17 +1262,9 @@ export default {
       if (mZrush && method === 'PUT') {
         return await handleAdminZrushRezervaci(env, aud, mZrush[1], hdrs);
       }
-      const mNaplan = path.match(/^\/api\/admin\/rezervace\/([^/]+)\/naplanovat$/);
-      if (mNaplan && method === 'POST') {
-        return await handleAdminNaplanovat(env, aud, mNaplan[1], hdrs);
-      }
       const mUskut = path.match(/^\/api\/admin\/rezervace\/([^/]+)\/uskutecneno$/);
       if (mUskut && method === 'POST') {
         return await handleAdminUskutecneno(req, env, aud, mUskut[1], hdrs);
-      }
-      const mRez = path.match(/^\/api\/admin\/rezervace\/([^/]+)$/);
-      if (mRez && method === 'PUT') {
-        return await handleAdminUpdateRezervace(req, env, aud, mRez[1], hdrs);
       }
 
       // Administrativa
