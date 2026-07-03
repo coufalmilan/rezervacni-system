@@ -49,9 +49,14 @@ function doPost(e) {
     const options = { htmlBody: data.html || '' };
     if (data.cc) options.cc = data.cc;
 
-    // Pokud je přiložená kalendářová pozvánka (.ics), vytvoří se jako příloha e-mailu
+    // Pokud je přiložená kalendářová pozvánka (.ics), vytvoří se jako příloha e-mailu.
+    // Typ "application/ics" (ne "text/calendar") schválně používáme proto, aby ji Gmail
+    // vždy zobrazil jako běžnou přílohu ke stažení. Při typu "text/calendar" se Gmail
+    // pokouší e-mail vykreslit jako speciální pozvánku s tlačítky Ano/Ne — a když se mu to
+    // nepovede (např. kvůli "plovoucímu" času bez časového pásma), nezobrazí nic, ani
+    // přílohu. Soubor .ics po otevření/stažení funguje stejně dobře v obou případech.
     if (data.icsContent) {
-      const blob = Utilities.newBlob(data.icsContent, 'text/calendar', data.icsFilename || 'schuzka.ics');
+      const blob = Utilities.newBlob(data.icsContent, 'application/ics', data.icsFilename || 'schuzka.ics');
       options.attachments = [blob];
     }
 
