@@ -2,5 +2,6 @@
 # Všechny cesty pod /rezervace/* a /admin/* obsluhuje příslušný index.html
 # Status 200 = "rewrite" (URL v prohlížeči se nezmění)
 
-/rezervace/*  /rezervace/index.html  200
-/admin/*      /admin/index.html      200
+/rezervace/*       /rezervace/index.html       200
+/admin/*           /admin/index.html           200
+/moje-rezervace/*  /moje-rezervace/index.html  200

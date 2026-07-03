@@ -12,6 +12,7 @@
 <!-- Hlavička -->
 <header class="page-header">
   <div class="container">
+    <img class="brand-logo" src="https://www.unistudies.cz/wp-content/uploads/2021/08/logo-UniStudies-CMYK-inverzni-jednoduche-02-175x55-1.png" alt="UniStudies" width="140" height="44">
     <h1>Rezervace termínu pohovoru</h1>
     <p id="header-subtitle">Načítám dostupné termíny…</p>
   </div>
@@ -86,6 +87,14 @@
     </div>
 
     <form id="rez-form" novalidate>
+      <!-- Honeypot proti botům (Fáze 5, funkce 8): pro člověka neviditelné pole.
+           Skryté přes CSS mimo viditelnou plochu (ne display:none — to some boty poznají a přeskočí).
+           Když ho něco vyplní, server rezervaci potichu zahodí. -->
+      <div style="position:absolute; left:-9999px; top:-9999px;" aria-hidden="true">
+        <label for="f-stranka">Nevyplňujte toto pole</label>
+        <input type="text" id="f-stranka" name="stranka" tabindex="-1" autocomplete="off">
+      </div>
+
       <div class="form-group">
         <label for="f-jmeno">Jméno a příjmení <span class="required">*</span></label>
         <input type="text" class="form-control" id="f-jmeno" name="jmeno"
@@ -369,6 +378,7 @@ document.getElementById('rez-form').addEventListener('submit', async function(e)
   const kontakt_zpusob = zvolenyKontaktZpusob();
   const telefon        = document.getElementById('f-telefon').value;
   const poznamka       = document.getElementById('f-poznamka').value;
+  const stranka        = document.getElementById('f-stranka').value; // honeypot — u lidí vždy prázdné
 
   // Frontend validace (zrcadlí serverovou — telefon je povinný jen při volbě "telefon")
   const errJmeno    = validujJmeno(jmeno);
@@ -400,6 +410,7 @@ document.getElementById('rez-form').addEventListener('submit', async function(e)
         jmeno, email, kontakt_zpusob,
         telefon: kontakt_zpusob === 'telefon' ? telefon : '',
         poznamka,
+        stranka,
       }),
     });
 

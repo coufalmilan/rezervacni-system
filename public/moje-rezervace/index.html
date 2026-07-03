@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Moje rezervace</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <meta name="robots" content="noindex,nofollow">
+</head>
+<body>
+
+<!-- Hlavička -->
+<header class="page-header">
+  <div class="container">
+    <img class="brand-logo" src="https://www.unistudies.cz/wp-content/uploads/2021/08/logo-UniStudies-CMYK-inverzni-jednoduche-02-175x55-1.png" alt="UniStudies" width="140" height="44">
+    <h1>Moje rezervace</h1>
+    <p id="header-subtitle">Načítám vaši rezervaci…</p>
+  </div>
+</header>
+
+<main class="container" style="padding-bottom: 3rem;">
+
+  <!-- Stav: načítání -->
+  <div id="stav-nacitam" class="card" style="text-align:center; padding: 2.5rem;">
+    <span class="spinner"></span>
+    <p class="text-muted mt-2">Načítám vaši rezervaci…</p>
+  </div>
+
+  <!-- Stav: chyba / neplatný odkaz -->
+  <div id="stav-chyba" class="hidden">
+    <div class="alert alert-error">
+      <span class="alert-icon">⚠️</span>
+      <div>
+        <strong>Odkaz nefunguje.</strong>
+        <p id="chyba-text" class="mt-1"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stav: rezervace už není aktivní (zrušená / uskutečněná / nedostavil se) -->
+  <div id="stav-neaktivni" class="hidden">
+    <div class="alert alert-info">
+      <span class="alert-icon">ℹ️</span>
+      <div>
+        <strong>S touto rezervací už není potřeba nic dělat.</strong>
+        <p id="neaktivni-text" class="mt-1"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stav: přehled + akce -->
+  <div id="stav-detail" class="hidden">
+    <div class="card mb-2">
+      <h2 style="margin-bottom: .75rem;">Váš termín</h2>
+      <div id="detail-obsah"></div>
+    </div>
+
+    <div class="card mb-2" id="karta-akce">
+      <h2 style="margin-bottom: .75rem;">Potřebujete termín změnit?</h2>
+      <div style="display:flex; gap:.75rem; flex-wrap:wrap;">
+        <button class="btn btn-secondary" id="btn-presunout">Přesunout na jiný termín</button>
+        <button class="btn btn-danger" id="btn-zrusit">Zrušit termín</button>
+      </div>
+    </div>
+
+    <!-- Výběr nového termínu (skryté, dokud se neklikne na "Přesunout") -->
+    <div class="card hidden" id="karta-presun">
+      <h2 style="margin-bottom: .75rem;">Vyberte nový termín</h2>
+      <div id="presun-nacitam" style="text-align:center;">
+        <span class="spinner"></span>
+        <p class="text-muted mt-2">Načítám volné termíny…</p>
+      </div>
+      <div id="presun-prazdno" class="alert alert-info hidden">
+        <span class="alert-icon">📅</span>
+        <div>Momentálně nejsou k dispozici žádné jiné volné termíny. Zkuste to prosím později, nebo termín zrušte.</div>
+      </div>
+      <div id="presun-sloty"></div>
+    </div>
+
+    <!-- Zpráva po akci -->
+    <div id="stav-hotovo" class="hidden">
+      <div class="alert alert-success">
+        <span class="alert-icon">✅</span>
+        <div id="hotovo-text"></div>
+      </div>
+    </div>
+
+    <!-- Chyba akce -->
+    <div id="akce-chyba" class="alert alert-error hidden mb-2">
+      <span class="alert-icon">⚠️</span>
+      <span id="akce-chyba-text"></span>
+    </div>
+  </div>
+
+</main>
+
+<script src="/config.js"></script>
+<script>
+let token = null;
+let rezervaceData = null;
+
+function zobrazStav(id) {
+  ['stav-nacitam', 'stav-chyba', 'stav-neaktivni', 'stav-detail']
+    .forEach(s => document.getElementById(s).classList.toggle('hidden', s !== id));
+}
+
+function formatDatum(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString('cs-CZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+function formatCas(od, do_) { return `${od}–${do_}`; }
+
+function escapeHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+const STAV_POPIS = {
+  zruseno: 'Tento termín byl zrušen.',
+  uskutecneno: 'Tento pohovor už proběhl.',
+  nedostavil_se: 'U tohoto termínu je vedeno, že se lektor nedostavil.',
+};
+
+function zobrazChybuAkce(text) {
+  const el = document.getElementById('akce-chyba');
+  document.getElementById('akce-chyba-text').textContent = text;
+  el.classList.toggle('hidden', !text);
+}
+
+async function nacti() {
+  const params = new URLSearchParams(window.location.search);
+  token = params.get('token');
+
+  if (!token) {
+    document.getElementById('chyba-text').textContent = 'V odkazu chybí potřebný kód. Použijte prosím odkaz přímo z e-mailu.';
+    zobrazStav('stav-chyba');
+    return;
+  }
+  if (!window.API_BASE_URL || window.API_BASE_URL === 'REPLACE_WITH_WORKER_URL') {
+    document.getElementById('chyba-text').textContent = 'Web není správně nakonfigurován. Kontaktujte správce.';
+    zobrazStav('stav-chyba');
+    return;
+  }
+
+  try {
+    const res = await fetch(`${window.API_BASE_URL}/api/rezervace/${encodeURIComponent(token)}`);
+    const data = await res.json();
+    if (!res.ok) {
+      document.getElementById('chyba-text').textContent = data.chyba || 'Odkaz je neplatný nebo už byl použit.';
+      zobrazStav('stav-chyba');
+      return;
+    }
+
+    rezervaceData = data.rezervace;
+    document.getElementById('header-subtitle').textContent = `Termín u ${rezervaceData.auditorka || 'auditorky'}`;
+
+    if (rezervaceData.stav !== 'rezervovano') {
+      document.getElementById('neaktivni-text').textContent =
+        STAV_POPIS[rezervaceData.stav] || 'Tato rezervace už není aktivní.';
+      zobrazStav('stav-neaktivni');
+      return;
+    }
+
+    document.getElementById('detail-obsah').innerHTML = `
+      <p><strong>Datum:</strong> ${formatDatum(rezervaceData.datum)}</p>
+      <p><strong>Čas:</strong> ${formatCas(rezervaceData.cas_od, rezervaceData.cas_do)}</p>
+      <p><strong>Způsob kontaktu:</strong> ${rezervaceData.kontakt_zpusob === 'teams' ? 'Schůzka přes MS Teams' : 'Telefon'}</p>
+      <p><strong>Jméno:</strong> ${escapeHtml(rezervaceData.jmeno)}</p>
+    `;
+    zobrazStav('stav-detail');
+
+  } catch (err) {
+    document.getElementById('chyba-text').textContent = 'Nepodařilo se připojit k serveru. Zkuste to prosím znovu za chvíli.';
+    zobrazStav('stav-chyba');
+  }
+}
+
+// ─── Zrušení ──────────────────────────────────────────────────────────────
+document.getElementById('btn-zrusit').addEventListener('click', async () => {
+  if (!confirm('Opravdu chcete tento termín zrušit?')) return;
+  zobrazChybuAkce(null);
+  const btn = document.getElementById('btn-zrusit');
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${window.API_BASE_URL}/api/rezervace/${encodeURIComponent(token)}/zrusit`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.chyba || 'Zrušení se nepodařilo.');
+    document.getElementById('karta-akce').classList.add('hidden');
+    document.getElementById('karta-presun').classList.add('hidden');
+    document.getElementById('hotovo-text').textContent = data.zprava || 'Termín byl zrušen.';
+    document.getElementById('stav-hotovo').classList.remove('hidden');
+  } catch (err) {
+    zobrazChybuAkce(err.message);
+    btn.disabled = false;
+  }
+});
+
+// ─── Přesun — načtení volných termínů ─────────────────────────────────────
+document.getElementById('btn-presunout').addEventListener('click', async () => {
+  document.getElementById('karta-presun').classList.remove('hidden');
+  document.getElementById('presun-nacitam').classList.remove('hidden');
+  document.getElementById('presun-prazdno').classList.add('hidden');
+  document.getElementById('presun-sloty').innerHTML = '';
+
+  try {
+    const res = await fetch(`${window.API_BASE_URL}/api/rezervace/${encodeURIComponent(token)}/sloty`);
+    const data = await res.json();
+    document.getElementById('presun-nacitam').classList.add('hidden');
+    if (!res.ok) { zobrazChybuAkce(data.chyba || 'Nepodařilo se načíst volné termíny.'); return; }
+
+    if (!data.sloty || data.sloty.length === 0) {
+      document.getElementById('presun-prazdno').classList.remove('hidden');
+      return;
+    }
+    renderujPresunSloty(data.sloty);
+  } catch (err) {
+    document.getElementById('presun-nacitam').classList.add('hidden');
+    zobrazChybuAkce('Nepodařilo se připojit k serveru.');
+  }
+});
+
+function renderujPresunSloty(sloty) {
+  const skupiny = {};
+  sloty.forEach(s => { (skupiny[s.datum] = skupiny[s.datum] || []).push(s); });
+
+  const container = document.getElementById('presun-sloty');
+  container.innerHTML = '';
+  Object.entries(skupiny).forEach(([datum, slotyDne]) => {
+    const skupina = document.createElement('div');
+    skupina.className = 'date-group';
+    const label = document.createElement('div');
+    label.className = 'date-label';
+    label.textContent = formatDatum(datum);
+    skupina.appendChild(label);
+
+    const grid = document.createElement('div');
+    grid.className = 'slots-grid';
+    slotyDne.forEach(slot => {
+      const btn = document.createElement('button');
+      btn.className = 'slot-btn';
+      btn.innerHTML = `<span class="slot-time">${formatCas(slot.cas_od, slot.cas_do)}</span>`;
+      btn.addEventListener('click', () => presunNaSlot(slot));
+      grid.appendChild(btn);
+    });
+    skupina.appendChild(grid);
+    container.appendChild(skupina);
+  });
+}
+
+async function presunNaSlot(slot) {
+  if (!confirm(`Přesunout termín na ${formatDatum(slot.datum)}, ${formatCas(slot.cas_od, slot.cas_do)}?`)) return;
+  zobrazChybuAkce(null);
+  try {
+    const res = await fetch(`${window.API_BASE_URL}/api/rezervace/${encodeURIComponent(token)}/presunout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ novy_slot_id: slot.id }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.chyba || 'Přesun se nepodařilo.');
+    document.getElementById('karta-akce').classList.add('hidden');
+    document.getElementById('karta-presun').classList.add('hidden');
+    document.getElementById('hotovo-text').textContent = data.zprava || 'Termín byl přesunut.';
+    document.getElementById('stav-hotovo').classList.remove('hidden');
+  } catch (err) {
+    zobrazChybuAkce(err.message);
+  }
+}
+
+nacti();
+</script>
+
+</body>
+</html>

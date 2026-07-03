@@ -42,6 +42,15 @@
     tr.rez-uskutecneno td { background: var(--success-light); }
     tr.rez-zruseno td { background: var(--neutral-50); color: var(--neutral-500); }
     tr.rez-zruseno a { color: var(--neutral-500); }
+    tr.rez-nedostavil td { background: #ffedd5; }
+
+    /* ── Fáze 5: přehled agendy, filtry, historie lektora ────────────── */
+    .prehled-polozka { display:flex; align-items:center; gap:.75rem; padding:.6rem 0; border-bottom:1px solid var(--neutral-100); }
+    .prehled-polozka:last-child { border-bottom:none; }
+    .prehled-cas { font-weight:600; min-width:90px; }
+    .filtry-bar { display:flex; flex-wrap:wrap; gap:.75rem; align-items:flex-end; margin-bottom:1rem; }
+    .filtry-bar .form-group { margin:0; }
+    .lektor-odkaz-jmeno { cursor:pointer; text-decoration:underline dotted; }
   </style>
 </head>
 <body>
@@ -81,7 +90,10 @@
 
   <!-- Horní lišta -->
   <div class="admin-topbar">
-    <span class="admin-topbar-title">📋 Rezervační systém</span>
+    <span class="admin-topbar-title">
+      <img class="brand-logo" src="https://www.unistudies.cz/wp-content/uploads/2021/08/logo-UniStudies-CMYK-inverzni-jednoduche-02-175x55-1.png" alt="UniStudies" width="110" height="35">
+      Rezervační systém
+    </span>
     <div class="admin-topbar-user">
       <span id="admin-jmeno">—</span>
       <button class="btn btn-sm btn-secondary" id="btn-odhlasit" style="color:white; background:rgba(255,255,255,.15); border-color:rgba(255,255,255,.2);">
@@ -92,7 +104,8 @@
 
   <!-- Navigace záložek -->
   <nav class="admin-nav">
-    <button class="admin-nav-btn active" data-tab="sloty">📅 Sloty</button>
+    <button class="admin-nav-btn active" data-tab="prehled">🏠 Přehled</button>
+    <button class="admin-nav-btn" data-tab="sloty">📅 Sloty</button>
     <button class="admin-nav-btn" data-tab="rezervace">👤 Rezervace</button>
     <button class="admin-nav-btn" data-tab="vykazy">📊 Výkazy</button>
     <button class="admin-nav-btn" data-tab="export">⬇️ Export</button>
@@ -102,8 +115,32 @@
   <!-- Obsah záložek -->
   <div class="admin-content">
 
+    <!-- ── Záložka: PŘEHLED (denní/týdenní agenda, Fáze 5, funkce 4) ── -->
+    <div id="tab-prehled" class="tab-panel">
+      <div class="section-header">
+        <h2>Co mě dnes a tento týden čeká</h2>
+        <button class="btn btn-secondary" id="btn-obnovit-prehled">↻ Obnovit</button>
+      </div>
+
+      <div id="prehled-nacitam" style="text-align:center; padding:2rem;">
+        <span class="spinner"></span>
+      </div>
+      <div id="prehled-obsah" class="hidden">
+        <div class="card mb-2">
+          <h3 style="margin-bottom:.75rem;">Dnes</h3>
+          <div id="prehled-dnes"></div>
+          <p id="prehled-dnes-prazdno" class="text-muted hidden">Dnes nemáte žádný naplánovaný termín.</p>
+        </div>
+        <div class="card">
+          <h3 style="margin-bottom:.75rem;">Zbytek týdne</h3>
+          <div id="prehled-tyden"></div>
+          <p id="prehled-tyden-prazdno" class="text-muted hidden">Do konce týdne nemáte žádný další termín.</p>
+        </div>
+      </div>
+    </div>
+
     <!-- ── Záložka: SLOTY ─────────────────────────────────────────── -->
-    <div id="tab-sloty" class="tab-panel">
+    <div id="tab-sloty" class="tab-panel hidden">
 
       <!-- Odkaz pro lektory -->
       <div class="alert alert-info mb-2" style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap;">
@@ -240,7 +277,93 @@
     <div id="tab-rezervace" class="tab-panel hidden">
       <div class="section-header">
         <h2>Přehled rezervací</h2>
-        <button class="btn btn-secondary" id="btn-obnovit-rezervace">↻ Obnovit</button>
+        <div class="flex gap-2">
+          <button class="btn btn-primary" id="btn-pridat-rezervaci">➕ Přidat rezervaci</button>
+          <button class="btn btn-secondary" id="btn-obnovit-rezervace">↻ Obnovit</button>
+        </div>
+      </div>
+
+      <!-- Filtry a fulltext (Fáze 5, funkce 5) -->
+      <div class="card mb-2">
+        <div class="filtry-bar">
+          <div class="form-group">
+            <label for="rf-hledat">Hledat (jméno / e-mail)</label>
+            <input type="text" class="form-control" id="rf-hledat" placeholder="Např. Novák">
+          </div>
+          <div class="form-group">
+            <label for="rf-datum-od">Datum od</label>
+            <input type="date" class="form-control" id="rf-datum-od">
+          </div>
+          <div class="form-group">
+            <label for="rf-datum-do">Datum do</label>
+            <input type="date" class="form-control" id="rf-datum-do">
+          </div>
+          <div class="form-group">
+            <label for="rf-firma">Firma</label>
+            <input type="text" class="form-control" id="rf-firma" placeholder="Libovolná firma">
+          </div>
+          <div class="form-group">
+            <label for="rf-stav">Stav</label>
+            <select class="form-control" id="rf-stav">
+              <option value="">Všechny</option>
+              <option value="rezervovano">Rezervováno</option>
+              <option value="uskutecneno">Uskutečněno</option>
+              <option value="nedostavil_se">Nedostavil se</option>
+              <option value="zruseno">Zrušeno</option>
+            </select>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="rf-reset">Zrušit filtry</button>
+        </div>
+      </div>
+
+      <!-- Panel: Ruční přidání rezervace (Fáze 5, funkce 3) -->
+      <div id="pridat-form-wrap" class="card hidden mb-2">
+        <h3 style="margin-bottom:1rem;">Přidat rezervaci ručně</h3>
+        <p class="text-muted mt-1" style="margin-bottom:1rem;">Pro případ, že se lektor ozve telefonicky mimo web.</p>
+        <form id="pridat-form" novalidate>
+          <div class="form-group">
+            <label for="pf-slot">Volný termín</label>
+            <select class="form-control" id="pf-slot" required>
+              <option value="">— vyberte volný termín —</option>
+            </select>
+          </div>
+          <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:1rem;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="pf-jmeno">Jméno a příjmení</label>
+              <input type="text" class="form-control" id="pf-jmeno" required>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="pf-email">E-mail</label>
+              <input type="email" class="form-control" id="pf-email" required>
+            </div>
+          </div>
+          <div class="form-group mt-2">
+            <label>Způsob kontaktu</label>
+            <div style="display:flex; gap:1.25rem; flex-wrap:wrap; margin-top:.25rem;">
+              <label style="display:flex; align-items:center; gap:.4rem; font-weight:400; cursor:pointer;">
+                <input type="radio" name="pf-kontakt" id="pf-kontakt-telefon" value="telefon" checked> Telefon
+              </label>
+              <label style="display:flex; align-items:center; gap:.4rem; font-weight:400; cursor:pointer;">
+                <input type="radio" name="pf-kontakt" id="pf-kontakt-teams" value="teams"> MS Teams
+              </label>
+            </div>
+          </div>
+          <div class="form-group mt-2" id="pf-telefon-wrap">
+            <label for="pf-telefon">Telefon</label>
+            <input type="tel" class="form-control" id="pf-telefon">
+          </div>
+          <div class="form-group mt-2">
+            <label for="pf-poznamka">Poznámka <span style="font-weight:400; color:var(--neutral-500)">(volitelné)</span></label>
+            <input type="text" class="form-control" id="pf-poznamka" maxlength="500">
+          </div>
+          <div id="pf-chyba" class="alert alert-error hidden mt-2">
+            <span class="alert-icon">⚠️</span><span id="pf-chyba-text"></span>
+          </div>
+          <div class="flex gap-2 mt-2">
+            <button type="submit" class="btn btn-primary" id="pf-submit">Přidat rezervaci</button>
+            <button type="button" class="btn btn-secondary" id="pf-zrusit">Zavřít</button>
+          </div>
+        </form>
       </div>
 
       <!-- Panel: Uskutečnit rezervaci — typ činnosti, firma, čas pro mzdu a výsledek v jednom kroku -->
@@ -397,7 +520,7 @@
         </div>
 
         <!-- Řádky výkazu -->
-        <div class="card">
+        <div class="card mb-2">
           <h3 style="margin-bottom:1rem;">Položky výkazu</h3>
           <div class="table-wrap">
             <table>
@@ -413,6 +536,34 @@
           <p id="vyk-prazdno" class="text-muted mt-2 hidden" style="text-align:center; padding:1rem;">
             Za vybraný měsíc zatím nejsou žádné uskutečněné položky.
           </p>
+        </div>
+
+        <!-- Rozpad podle firmy (Fáze 5, funkce 7) -->
+        <div class="card mb-2">
+          <h3 style="margin-bottom:1rem;">Rozpad podle firmy / klienta</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Firma</th><th>Počet</th><th>Minuty</th><th>Kč</th></tr></thead>
+              <tbody id="vyk-podle-firmy"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Srovnání měsíců (Fáze 5, funkce 7) -->
+        <div class="card">
+          <div class="section-header" style="margin-bottom:1rem;">
+            <h3>Srovnání měsíců</h3>
+            <div class="flex gap-2" style="align-items:center;">
+              <input type="number" id="srov-rok" class="form-control" style="width:100px;" min="2020" max="2100">
+              <button class="btn btn-secondary btn-sm" id="btn-obnovit-srovnani">↻ Obnovit</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Měsíc</th><th>Počet</th><th>Minuty</th><th>Kč</th></tr></thead>
+              <tbody id="srov-tbody"></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -490,6 +641,17 @@
       <button class="btn btn-danger" id="confirm-ok">Potvrdit</button>
       <button class="btn btn-secondary" id="confirm-cancel">Zrušit</button>
     </div>
+  </div>
+</div>
+
+<!-- ══ Dialog: historie lektora (Fáze 5, funkce 6) ═══════════════════════════ -->
+<div id="historie-overlay" class="overlay" role="dialog" aria-modal="true">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-header">
+      <h2 id="historie-title">Historie lektora</h2>
+      <button class="modal-close" id="historie-zavrit" aria-label="Zavřít">×</button>
+    </div>
+    <div id="historie-obsah"></div>
   </div>
 </div>
 
@@ -584,7 +746,8 @@ function zobrazAdmin() {
   const odkaz = `${window.location.origin}/rezervace/?auditorka=${session.slug}`;
   document.getElementById('lektor-odkaz').textContent = odkaz;
 
-  nactiSloty();
+  nactiSloty();     // Potřeba i na pozadí — rezervace tabulka z toho staví slotyMap
+  nactiPrehled();    // Úvodní záložka
 }
 
 // ─── Záložky ──────────────────────────────────────────────────────────────────
@@ -596,10 +759,42 @@ document.querySelectorAll('.admin-nav-btn').forEach(btn => {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
     document.getElementById(`tab-${tab}`).classList.remove('hidden');
 
+    if (tab === 'prehled') nactiPrehled();
     if (tab === 'rezervace' && rezervaceData.length === 0) nactiRezervace();
-    if (tab === 'vykazy') nactiVykazy();
+    if (tab === 'vykazy') { nactiVykazy(); nactiSrovnani(); }
   });
 });
+
+// ─── PŘEHLED (denní/týdenní agenda) ──────────────────────────────────────────
+
+document.getElementById('btn-obnovit-prehled').addEventListener('click', nactiPrehled);
+
+async function nactiPrehled() {
+  document.getElementById('prehled-nacitam').style.display = 'block';
+  document.getElementById('prehled-obsah').classList.add('hidden');
+
+  const { ok, data } = await api('GET', '/api/admin/prehled');
+  document.getElementById('prehled-nacitam').style.display = 'none';
+  if (!ok) { alert('Nepodařilo se načíst přehled: ' + (data.chyba || '')); return; }
+
+  const renderSeznam = (polozky, wrapId, prazdnoId) => {
+    const wrap = document.getElementById(wrapId);
+    wrap.innerHTML = polozky.map(p => `
+      <div class="prehled-polozka">
+        <span class="prehled-cas">${p.cas_od}–${p.cas_do}</span>
+        <strong>${esc(p.jmeno)}</strong>
+        ${p.kontakt_zpusob === 'teams'
+          ? '<span class="badge badge-blue">MS Teams</span>'
+          : `<a href="tel:${esc(p.telefon)}">${esc(p.telefon)}</a>`}
+      </div>
+    `).join('');
+    document.getElementById(prazdnoId).classList.toggle('hidden', polozky.length > 0);
+  };
+
+  renderSeznam(data.dnes || [], 'prehled-dnes', 'prehled-dnes-prazdno');
+  renderSeznam(data.tyden || [], 'prehled-tyden', 'prehled-tyden-prazdno');
+  document.getElementById('prehled-obsah').classList.remove('hidden');
+}
 
 // ─── SLOT MŘÍŽKA ──────────────────────────────────────────────────────────────
 
@@ -896,21 +1091,54 @@ async function nactiRezervace() {
   renderujRezervace();
 }
 
+// Vrátí rezervaceData po aplikaci filtrů (Fáze 5, funkce 5) — filtruje se v prohlížeči,
+// protože data jsou už omezená jen na tuto auditorku a rezervací nebývá tolik, aby to zpomalovalo.
+function filtrovaneRezervace() {
+  const hledat  = (document.getElementById('rf-hledat').value || '').trim().toLowerCase();
+  const datOd   = document.getElementById('rf-datum-od').value;
+  const datDo   = document.getElementById('rf-datum-do').value;
+  const firma   = (document.getElementById('rf-firma').value || '').trim().toLowerCase();
+  const stavF   = document.getElementById('rf-stav').value;
+
+  return rezervaceData.filter(r => {
+    const slot = slotyMap[r.slot_id] || {};
+    if (hledat && !(`${r.jmeno} ${r.email}`.toLowerCase().includes(hledat))) return false;
+    if (datOd && (!slot.datum || slot.datum < datOd)) return false;
+    if (datDo && (!slot.datum || slot.datum > datDo)) return false;
+    if (firma && !(r.firma || '').toLowerCase().includes(firma)) return false;
+    if (stavF && r.stav !== stavF) return false;
+    return true;
+  });
+}
+
+['rf-hledat','rf-datum-od','rf-datum-do','rf-firma','rf-stav'].forEach(id => {
+  document.getElementById(id).addEventListener('input', renderujRezervace);
+  document.getElementById(id).addEventListener('change', renderujRezervace);
+});
+document.getElementById('rf-reset').addEventListener('click', () => {
+  ['rf-hledat','rf-datum-od','rf-datum-do','rf-firma'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('rf-stav').value = '';
+  renderujRezervace();
+});
+
 function renderujRezervace() {
   const tbody = document.getElementById('rez-tbody');
   tbody.innerHTML = '';
 
-  document.getElementById('rez-prazdno').classList.toggle('hidden', rezervaceData.length > 0);
+  const zobrazit = filtrovaneRezervace();
+  document.getElementById('rez-prazdno').classList.toggle('hidden', zobrazit.length > 0);
   document.getElementById('rez-tabulka').classList.remove('hidden');
 
-  rezervaceData.forEach(r => {
+  const RADEK_CLASS = { uskutecneno: 'rez-uskutecneno', zruseno: 'rez-zruseno', nedostavil_se: 'rez-nedostavil' };
+
+  zobrazit.forEach(r => {
     const slot = slotyMap[r.slot_id] || {};
     const tr = document.createElement('tr');
     const aktivni = r.stav === 'rezervovano';
-    tr.className = r.stav === 'uskutecneno' ? 'rez-uskutecneno' : r.stav === 'zruseno' ? 'rez-zruseno' : '';
+    tr.className = RADEK_CLASS[r.stav] || '';
     tr.innerHTML = `
       <td>${slot.datum ? formatDatum(slot.datum) : '—'}${slot.cas_od ? `<br><span class="text-muted" style="font-size:.8rem;">${slot.cas_od}–${slot.cas_do}</span>` : ''}</td>
-      <td><strong>${esc(r.jmeno)}</strong>${r.poznamka ? `<br><span class="text-muted" style="font-size:.8rem;">${esc(r.poznamka)}</span>` : ''}</td>
+      <td><span class="lektor-odkaz-jmeno" onclick="otevriHistorii('${esc(r.email)}')" title="Zobrazit historii lektora"><strong>${esc(r.jmeno)}</strong></span>${r.poznamka ? `<br><span class="text-muted" style="font-size:.8rem;">${esc(r.poznamka)}</span>` : ''}</td>
       <td>${kontaktBunka(r)}</td>
       <td class="text-muted">${esc(r.firma) || '—'}</td>
       <td>${esc(r.typ_cinnosti) || '<span class="text-muted">—</span>'}</td>
@@ -918,6 +1146,7 @@ function renderujRezervace() {
       <td class="td-actions">
         ${aktivni ? `
           <button class="btn btn-sm btn-primary" onclick="otevriUskutForm('${r.id}')">Uskutečněno</button>
+          <button class="btn btn-sm btn-secondary" onclick="oznacNedostavilSe('${r.id}')">Nedostavil se</button>
           <button class="btn btn-sm btn-danger" onclick="zrushRezervaci('${r.id}')">Zrušit</button>
         ` : ''}
       </td>
@@ -925,6 +1154,135 @@ function renderujRezervace() {
     tbody.appendChild(tr);
   });
 }
+
+// ─── Nedostavil se (Fáze 5, funkce 2) ────────────────────────────────────────
+function oznacNedostavilSe(id) {
+  const r = rezervaceData.find(x => x.id === id);
+  if (!r) return;
+  potvrdit(
+    'Označit jako "nedostavil se"?',
+    `Rezervace lektora "${r.jmeno}" se nezapočítá do výkazu jako uskutečněná, ale zůstane v přehledu.`,
+    async () => {
+      const { ok, data } = await api('PUT', `/api/admin/rezervace/${id}/nedostavil-se`);
+      if (ok) { await nactiRezervace(); }
+      else { alert('Chyba: ' + (data.chyba || 'Neznámá chyba.')); }
+    }
+  );
+}
+
+// ─── Historie lektora (Fáze 5, funkce 6) ─────────────────────────────────────
+function otevriHistorii(email) {
+  document.getElementById('historie-title').textContent = `Historie lektora — ${email}`;
+  document.getElementById('historie-obsah').innerHTML = '<p style="text-align:center;"><span class="spinner"></span></p>';
+  document.getElementById('historie-overlay').classList.add('open');
+
+  api('GET', `/api/admin/lektor/${encodeURIComponent(email)}`).then(({ ok, data }) => {
+    if (!ok) {
+      document.getElementById('historie-obsah').innerHTML = `<p>Nepodařilo se načíst historii: ${esc(data.chyba || '')}</p>`;
+      return;
+    }
+    if (!data.rezervace.length) {
+      document.getElementById('historie-obsah').innerHTML = '<p class="text-muted">Žádné dřívější pohovory.</p>';
+      return;
+    }
+    document.getElementById('historie-obsah').innerHTML = `
+      <p class="text-muted mb-2">Celkem ${data.pocet} pohovor(ů).</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Datum</th><th>Čas</th><th>Typ</th><th>Firma</th><th>Stav</th><th>Výsledek / poznámka</th></tr></thead>
+          <tbody>
+            ${data.rezervace.map(r => `
+              <tr>
+                <td>${formatDatum(r.datum)}</td>
+                <td>${r.cas_od}–${r.cas_do}</td>
+                <td>${esc(r.typ_cinnosti) || '—'}</td>
+                <td>${esc(r.firma) || '—'}</td>
+                <td>${rezStavBadge(r.stav)}</td>
+                <td class="text-muted">${esc(r.vysledek || r.poznamka)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  });
+}
+
+document.getElementById('historie-zavrit').addEventListener('click', () => {
+  document.getElementById('historie-overlay').classList.remove('open');
+});
+document.getElementById('historie-overlay').addEventListener('click', function(e) {
+  if (e.target === this) this.classList.remove('open');
+});
+
+// ─── Ruční přidání rezervace (Fáze 5, funkce 3) ──────────────────────────────
+document.getElementById('btn-pridat-rezervaci').addEventListener('click', () => {
+  document.getElementById('pridat-form').reset();
+  document.getElementById('pf-chyba').classList.add('hidden');
+  naplnPfSloty();
+  aktualizujPfTelefonPole();
+  document.getElementById('pridat-form-wrap').classList.remove('hidden');
+  document.getElementById('pridat-form-wrap').scrollIntoView({ behavior: 'smooth', block: 'center' });
+});
+document.getElementById('pf-zrusit').addEventListener('click', () => {
+  document.getElementById('pridat-form-wrap').classList.add('hidden');
+});
+
+function naplnPfSloty() {
+  const sel = document.getElementById('pf-slot');
+  sel.innerHTML = '<option value="">— vyberte volný termín —</option>';
+  slotyData
+    .filter(s => s.stav === 'volny')
+    .sort((a, b) => a.datum.localeCompare(b.datum) || a.cas_od.localeCompare(b.cas_od))
+    .forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = `${formatDatum(s.datum)} ${s.cas_od}–${s.cas_do}`;
+      sel.appendChild(opt);
+    });
+}
+
+function aktualizujPfTelefonPole() {
+  const jeTelefon = document.getElementById('pf-kontakt-telefon').checked;
+  document.getElementById('pf-telefon-wrap').style.display = jeTelefon ? '' : 'none';
+}
+document.querySelectorAll('input[name="pf-kontakt"]').forEach(r => r.addEventListener('change', aktualizujPfTelefonPole));
+
+document.getElementById('pridat-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const chybaEl = document.getElementById('pf-chyba');
+  chybaEl.classList.add('hidden');
+  const btn = document.getElementById('pf-submit');
+
+  const kontakt_zpusob = document.getElementById('pf-kontakt-teams').checked ? 'teams' : 'telefon';
+  const payload = {
+    slot_id: document.getElementById('pf-slot').value,
+    jmeno: document.getElementById('pf-jmeno').value,
+    email: document.getElementById('pf-email').value,
+    kontakt_zpusob,
+    telefon: kontakt_zpusob === 'telefon' ? document.getElementById('pf-telefon').value : '',
+    poznamka: document.getElementById('pf-poznamka').value,
+  };
+  if (!payload.slot_id) {
+    document.getElementById('pf-chyba-text').textContent = 'Vyberte volný termín.';
+    chybaEl.classList.remove('hidden');
+    return;
+  }
+
+  btn.disabled = true;
+  const { ok, data } = await api('POST', '/api/admin/rezervace', payload);
+  btn.disabled = false;
+
+  if (ok) {
+    document.getElementById('pridat-form-wrap').classList.add('hidden');
+    await nactiSloty();
+    await nactiRezervace();
+  } else {
+    document.getElementById('pf-chyba-text').textContent = data.chyba ||
+      (data.chyby ? Object.values(data.chyby).join(' ') : 'Chyba při ukládání.');
+    chybaEl.classList.remove('hidden');
+  }
+});
 
 // Sloupec "Kontakt" — e-mail vždy, plus telefon nebo odznak MS Teams podle volby lektora
 function kontaktBunka(r) {
@@ -1094,7 +1452,35 @@ async function nactiVykazy() {
   `).join('');
   document.getElementById('vyk-prazdno').classList.toggle('hidden', data.radky.length > 0);
 
+  // Rozpad podle firmy (Fáze 5, funkce 7)
+  const podleFirmy = document.getElementById('vyk-podle-firmy');
+  const zaznamyFirmy = Object.entries(data.podle_firmy || {});
+  podleFirmy.innerHTML = zaznamyFirmy.length
+    ? zaznamyFirmy.map(([firma, s]) => `<tr><td>${esc(firma)}</td><td>${s.pocet}</td><td>${s.minut}</td><td>${s.castka.toFixed(2)}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="text-muted" style="text-align:center;">Žádné položky za vybraný měsíc.</td></tr>';
+
   document.getElementById('vyk-obsah').classList.remove('hidden');
+}
+
+// ─── Srovnání měsíců (Fáze 5, funkce 7) ──────────────────────────────────────
+document.getElementById('srov-rok').value = new Date().getFullYear();
+document.getElementById('btn-obnovit-srovnani').addEventListener('click', nactiSrovnani);
+document.getElementById('srov-rok').addEventListener('change', nactiSrovnani);
+
+async function nactiSrovnani() {
+  const rok = document.getElementById('srov-rok').value || new Date().getFullYear();
+  const { ok, data } = await api('GET', `/api/admin/vykazy/srovnani?rok=${rok}`);
+  const tbody = document.getElementById('srov-tbody');
+  if (!ok) { tbody.innerHTML = `<tr><td colspan="4" class="text-muted">Nepodařilo se načíst: ${esc(data.chyba || '')}</td></tr>`; return; }
+
+  tbody.innerHTML = data.mesice.map(m => `
+    <tr>
+      <td>${esc(formatMesic(m.mesic))}</td>
+      <td>${m.pocet}</td>
+      <td>${m.minut}</td>
+      <td>${m.castka.toFixed(2)}</td>
+    </tr>
+  `).join('');
 }
 
 // ─── Ruční přidání položky Administrativa ───────────────────────────────────
@@ -1252,9 +1638,10 @@ function stavBadge(stav) {
 
 function rezStavBadge(stav) {
   const m = {
-    'rezervovano': '<span class="badge badge-blue">rezervováno</span>',
-    'uskutecneno': '<span class="badge badge-green">uskutečněno</span>',
-    'zruseno':     '<span class="badge badge-red">zrušeno</span>',
+    'rezervovano':   '<span class="badge badge-blue">rezervováno</span>',
+    'uskutecneno':   '<span class="badge badge-green">uskutečněno</span>',
+    'zruseno':       '<span class="badge badge-red">zrušeno</span>',
+    'nedostavil_se': '<span class="badge badge-orange">nedostavil se</span>',
   };
   return m[stav] || `<span class="badge badge-gray">${esc(stav)}</span>`;
 }

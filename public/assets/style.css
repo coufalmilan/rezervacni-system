@@ -2,24 +2,29 @@
    Rezervační systém — sdílené CSS styly
    ═══════════════════════════════════════════════════════ */
 
-/* ── Proměnné ── */
+/* ── Proměnné ──
+   Barvy odpovídají brandingu UniStudies s.r.o. (viz ZADANI.md §18 / ZADANI-NOVE-FUNKCE.md §F).
+   Změna značky = úprava hodnot tady na jednom místě, zbytek CSS se přizpůsobí automaticky. */
 :root {
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --primary-light: #eff6ff;
-  --success: #16a34a;
+  --primary: #0170B9;         /* UniStudies primární modrá — tlačítka, odkazy, hlavní akcenty */
+  --primary-hover: #015C94;   /* o něco tmavší pro hover/aktivní stav */
+  --primary-light: #E4F1FA;   /* světlý podklad pro info hlášky a vybrané prvky */
+  --secondary: #00A99D;       /* UniStudies sekundární tyrkysová — doplňkové zvýraznění, stavy */
+  --secondary-hover: #018f85;
+  --secondary-light: #DFF5F3;
+  --success: #16a34a;         /* zelená pro "úspěch" — brand nemá vlastní, ponechána univerzální */
   --success-light: #f0fdf4;
-  --error: #dc2626;
-  --error-light: #fef2f2;
+  --error: #D71921;           /* UniStudies červená — jen na chyby/upozornění */
+  --error-light: #FBE7E8;
   --warning: #d97706;
   --warning-light: #fffbeb;
-  --neutral-50: #f8fafc;
-  --neutral-100: #f1f5f9;
-  --neutral-200: #e2e8f0;
-  --neutral-300: #cbd5e1;
-  --neutral-500: #64748b;
-  --neutral-700: #334155;
-  --neutral-900: #0f172a;
+  --neutral-50: #F1F1F1;      /* UniStudies světlé pozadí */
+  --neutral-100: #EAEAEA;     /* UniStudies jemné linky/ohraničení */
+  --neutral-200: #E0E0E0;
+  --neutral-300: #CCCCCC;
+  --neutral-500: #82858C;
+  --neutral-700: #4B4F58;     /* UniStudies barva textu */
+  --neutral-900: #3A3A3A;     /* UniStudies barva nadpisů */
   --radius-sm: 6px;
   --radius: 10px;
   --radius-lg: 14px;
@@ -422,7 +427,7 @@ tbody tr:hover { background: var(--neutral-50); }
 }
 
 .admin-topbar {
-  background: var(--neutral-900);
+  background: var(--primary);
   color: white;
   padding: .75rem 1.5rem;
   display: flex;
@@ -438,6 +443,23 @@ tbody tr:hover { background: var(--neutral-50); }
   font-weight: 700;
   font-size: 1rem;
   color: white;
+  display: flex;
+  align-items: center;
+  gap: .625rem;
+}
+
+/* Logo UniStudies — inverzní (světlá) varianta pro barevné pozadí (viz ZADANI.md §18) */
+.brand-logo {
+  display: inline-block;
+  height: 28px;
+  width: auto;
+  vertical-align: middle;
+}
+
+.page-header .brand-logo {
+  display: block;
+  height: 36px;
+  margin-bottom: .625rem;
 }
 
 .admin-topbar-user {

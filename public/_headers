@@ -13,8 +13,12 @@
 # connect-src povoluje volání na Worker API
 # unsafe-inline je nutný kvůli inline skriptům v SPA (bez něj by se nic nenačetlo)
 /admin/*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src https://rezervacni-system.coufal-milan.workers.dev; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src https://rezervacni-system.coufal-milan.workers.dev; img-src 'self' data: https://www.unistudies.cz; font-src 'self'; frame-ancestors 'none'
 
 # CSP pro rezervační stránku lektorů
 /rezervace/*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src https://rezervacni-system.coufal-milan.workers.dev; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src https://rezervacni-system.coufal-milan.workers.dev; img-src 'self' data: https://www.unistudies.cz; font-src 'self'; frame-ancestors 'none'
+
+# CSP pro samoobslužnou stránku zrušení/přesunu (Fáze 5, funkce 1)
+/moje-rezervace/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src https://rezervacni-system.coufal-milan.workers.dev; img-src 'self' data: https://www.unistudies.cz; font-src 'self'; frame-ancestors 'none'
