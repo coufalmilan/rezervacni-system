@@ -9,13 +9,16 @@
   --primary: #0170B9;         /* UniStudies primární modrá — tlačítka, odkazy, hlavní akcenty */
   --primary-hover: #015C94;   /* o něco tmavší pro hover/aktivní stav */
   --primary-light: #E4F1FA;   /* světlý podklad pro info hlášky a vybrané prvky */
+  --primary-border: #AEDBF2;  /* jemné ohraničení odvozené z primární modré */
   --secondary: #00A99D;       /* UniStudies sekundární tyrkysová — doplňkové zvýraznění, stavy */
   --secondary-hover: #018f85;
   --secondary-light: #DFF5F3;
+  --secondary-border: #9CDCD5;
   --success: #16a34a;         /* zelená pro "úspěch" — brand nemá vlastní, ponechána univerzální */
   --success-light: #f0fdf4;
   --error: #D71921;           /* UniStudies červená — jen na chyby/upozornění */
   --error-light: #FBE7E8;
+  --error-border: #F3B7BB;    /* jemné ohraničení odvozené z brand červené */
   --warning: #d97706;
   --warning-light: #fffbeb;
   --neutral-50: #F1F1F1;      /* UniStudies světlé pozadí */
@@ -121,12 +124,12 @@ p  { color: var(--neutral-700); }
 .form-control:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(37,99,235,.15);
+  box-shadow: 0 0 0 3px rgba(1,112,185,.15);
 }
 
 .form-control.is-invalid {
   border-color: var(--error);
-  box-shadow: 0 0 0 3px rgba(220,38,38,.12);
+  box-shadow: 0 0 0 3px rgba(215,25,33,.12);
 }
 
 .form-control.is-valid {
@@ -178,9 +181,9 @@ p  { color: var(--neutral-700); }
 .btn-danger {
   background: var(--error-light);
   color: var(--error);
-  border: 1.5px solid #fecaca;
+  border: 1.5px solid var(--error-border);
 }
-.btn-danger:hover:not(:disabled) { background: #fee2e2; }
+.btn-danger:hover:not(:disabled) { background: var(--error-border); }
 
 .btn-sm {
   padding: .375rem .75rem;
@@ -215,14 +218,14 @@ p  { color: var(--neutral-700); }
 
 .alert-error {
   background: var(--error-light);
-  border-color: #fecaca;
-  color: #991b1b;
+  border-color: var(--error-border);
+  color: var(--error);
 }
 
 .alert-info {
   background: var(--primary-light);
-  border-color: #bfdbfe;
-  color: #1e40af;
+  border-color: var(--primary-border);
+  color: var(--primary-hover);
 }
 
 .alert-warning {
@@ -277,18 +280,20 @@ tbody tr:hover { background: var(--neutral-50); }
   white-space: nowrap;
 }
 
-.badge-green  { background: #dcfce7; color: #15803d; }
-.badge-blue   { background: #dbeafe; color: #1d4ed8; }
-.badge-red    { background: #fee2e2; color: #b91c1c; }
+/* Barvy odznaků podle brandingu: sekundární tyrkysová na kladné stavy, primární modrá na
+   probíhající/informační stavy, červená jen na zrušené/chybové stavy (viz ZADANI.md §18). */
+.badge-green  { background: var(--secondary-light); color: var(--secondary-hover); }
+.badge-blue   { background: var(--primary-light); color: var(--primary); }
+.badge-red    { background: var(--error-light); color: var(--error); }
 .badge-gray   { background: var(--neutral-100); color: var(--neutral-500); }
-.badge-orange { background: #ffedd5; color: #c2410c; }
+.badge-orange { background: var(--warning-light); color: var(--warning); }
 
 /* ── Spinner ── */
 .spinner {
   display: inline-block;
   width: 1.25rem;
   height: 1.25rem;
-  border: 2.5px solid rgba(37,99,235,.2);
+  border: 2.5px solid rgba(1,112,185,.2);
   border-top-color: var(--primary);
   border-radius: 50%;
   animation: spin .7s linear infinite;
@@ -340,7 +345,7 @@ tbody tr:hover { background: var(--neutral-50); }
 .slot-btn.selected {
   border-color: var(--primary);
   background: var(--primary-light);
-  box-shadow: 0 0 0 3px rgba(37,99,235,.15);
+  box-shadow: 0 0 0 3px rgba(1,112,185,.15); /* odstín primární modré UniStudies */
 }
 
 .slot-time {
