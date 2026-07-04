@@ -47,7 +47,8 @@
     /* ── Fáze 5: přehled agendy, filtry, historie lektora ────────────── */
     .prehled-polozka { display:flex; align-items:center; gap:.75rem; padding:.6rem 0; border-bottom:1px solid var(--neutral-100); }
     .prehled-polozka:last-child { border-bottom:none; }
-    .prehled-cas { font-weight:600; min-width:90px; }
+    .prehled-cas { font-weight:600; min-width:110px; line-height:1.3; }
+    .prehled-datum { font-weight:400; font-size:.8rem; color: var(--neutral-500); text-transform:capitalize; }
     .filtry-bar { display:flex; flex-wrap:wrap; gap:.75rem; align-items:flex-end; margin-bottom:1rem; }
     .filtry-bar .form-group { margin:0; }
     .lektor-odkaz-jmeno { cursor:pointer; text-decoration:underline dotted; }
@@ -777,11 +778,11 @@ async function nactiPrehled() {
   document.getElementById('prehled-nacitam').style.display = 'none';
   if (!ok) { alert('Nepodařilo se načíst přehled: ' + (data.chyba || '')); return; }
 
-  const renderSeznam = (polozky, wrapId, prazdnoId) => {
+  const renderSeznam = (polozky, wrapId, prazdnoId, showDatum) => {
     const wrap = document.getElementById(wrapId);
     wrap.innerHTML = polozky.map(p => `
       <div class="prehled-polozka">
-        <span class="prehled-cas">${p.cas_od}–${p.cas_do}</span>
+        <span class="prehled-cas">${showDatum ? `<span class="prehled-datum">${formatDatum(p.datum)}</span><br>` : ''}${p.cas_od}–${p.cas_do}</span>
         <strong>${esc(p.jmeno)}</strong>
         ${p.kontakt_zpusob === 'teams'
           ? '<span class="badge badge-blue">MS Teams</span>'
@@ -791,8 +792,8 @@ async function nactiPrehled() {
     document.getElementById(prazdnoId).classList.toggle('hidden', polozky.length > 0);
   };
 
-  renderSeznam(data.dnes || [], 'prehled-dnes', 'prehled-dnes-prazdno');
-  renderSeznam(data.tyden || [], 'prehled-tyden', 'prehled-tyden-prazdno');
+  renderSeznam(data.dnes || [], 'prehled-dnes', 'prehled-dnes-prazdno', false);
+  renderSeznam(data.tyden || [], 'prehled-tyden', 'prehled-tyden-prazdno', true);
   document.getElementById('prehled-obsah').classList.remove('hidden');
 }
 
