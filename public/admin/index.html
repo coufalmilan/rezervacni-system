@@ -109,7 +109,6 @@
     <button class="admin-nav-btn" data-tab="sloty">📅 Sloty</button>
     <button class="admin-nav-btn" data-tab="rezervace">👤 Rezervace</button>
     <button class="admin-nav-btn" data-tab="vykazy">📊 Výkazy</button>
-    <button class="admin-nav-btn" data-tab="export">⬇️ Export</button>
     <button class="admin-nav-btn" data-tab="nastaveni">⚙️ Nastavení</button>
   </nav>
 
@@ -566,35 +565,6 @@
             </table>
           </div>
         </div>
-      </div>
-    </div>
-
-    <!-- ── Záložka: EXPORT ────────────────────────────────────────── -->
-    <div id="tab-export" class="tab-panel hidden">
-      <h2 style="margin-bottom:1rem;">Export dat</h2>
-      <div class="card">
-        <h3>Export výkazu do CSV</h3>
-        <p class="text-muted mt-1">
-          Stáhne výkaz (stejné rozvržení jako v záložce Výkazy) jako CSV soubor,
-          který lze otevřít v Excelu nebo Google Tabulkách.
-        </p>
-        <div class="form-group mt-2" style="max-width:220px;">
-          <label for="exp-mesic">Měsíc <span style="font-weight:400; color:var(--neutral-500)">(prázdné = export všeho)</span></label>
-          <input type="month" class="form-control" id="exp-mesic">
-        </div>
-        <button class="btn btn-primary mt-1" id="btn-export-csv">
-          ⬇️ Stáhnout CSV
-        </button>
-        <div id="export-chyba" class="alert alert-error hidden mt-2">
-          <span class="alert-icon">⚠️</span>
-          <span id="export-chyba-text"></span>
-        </div>
-      </div>
-      <div class="card mt-2" style="border-color:var(--neutral-200);">
-        <h3>Odkaz pro lektory</h3>
-        <p class="text-muted mt-1">Tento odkaz posílejte lektorům, aby se mohli zapisovat na vaše termíny:</p>
-        <div id="odkaz-pro-lektory" style="margin-top:.75rem; padding:.75rem 1rem; background:var(--neutral-50); border:1px solid var(--neutral-200); border-radius:var(--radius-sm); font-family:monospace; font-size:.9rem; word-break:break-all;"></div>
-        <button class="btn btn-secondary btn-sm mt-1" id="btn-kopirovat-odkaz">Kopírovat odkaz</button>
       </div>
     </div>
 
@@ -1528,54 +1498,6 @@ document.getElementById('admin-form').addEventListener('submit', async function(
     document.getElementById('af-chyba-text').textContent = data.chyba || 'Chyba při ukládání.';
     chybaEl.classList.remove('hidden');
   }
-});
-
-// ─── EXPORT ───────────────────────────────────────────────────────────────────
-
-document.getElementById('btn-export-csv').addEventListener('click', async function() {
-  this.disabled = true;
-  this.textContent = '⏳ Připravuji…';
-  document.getElementById('export-chyba').classList.add('hidden');
-
-  try {
-    const mesic = document.getElementById('exp-mesic').value;
-    const qs = mesic ? `?mesic=${mesic}` : '';
-    const headers = session.csrfToken ? { 'X-CSRF-Token': session.csrfToken } : {};
-    if (session.token) headers['Authorization'] = `Bearer ${session.token}`;
-    const res = await fetch(BASE() + '/api/admin/export' + qs, {
-      credentials: 'include',
-      headers,
-    });
-
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      throw new Error(d.chyba || 'Chyba serveru');
-    }
-
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `vykaz-${mesic || 'vse'}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  } catch (err) {
-    document.getElementById('export-chyba-text').textContent = err.message;
-    document.getElementById('export-chyba').classList.remove('hidden');
-  }
-
-  this.disabled = false;
-  this.textContent = '⬇️ Stáhnout CSV';
-});
-
-document.getElementById('btn-kopirovat-odkaz').addEventListener('click', function() {
-  const text = document.getElementById('odkaz-pro-lektory').textContent;
-  navigator.clipboard.writeText(text).then(() => {
-    this.textContent = '✓ Zkopírováno!';
-    setTimeout(() => { this.textContent = 'Kopírovat odkaz'; }, 2000);
-  });
 });
 
 // ─── Dialog: potvrzení ────────────────────────────────────────────────────────
