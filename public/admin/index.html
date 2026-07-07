@@ -777,6 +777,15 @@ function minutesToTime(m) {
   return `${Math.floor(m / 60).toString().padStart(2,'0')}:${(m % 60).toString().padStart(2,'0')}`;
 }
 
+// Datum ve formátu YYYY-MM-DD podle MÍSTNÍHO času prohlížeče (ne UTC).
+// Použití toISOString() by tu posouvalo datum o den zpátky (UTC je za českým časem).
+function toLocalISODate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function getWeekStart(offset) {
   const today = new Date();
   const dow = today.getDay(); // 0=Ne
@@ -821,7 +830,7 @@ function buildGrid() {
 
     for (let d = 0; d < 7; d++) {
       const dt = new Date(ws); dt.setDate(ws.getDate() + d);
-      const datum = dt.toISOString().split('T')[0];
+      const datum = toLocalISODate(dt);
       const key   = `${datum}|${casOd}|${casDo}`;
       const exist = slotyData.find(s => s.datum === datum && s.cas_od === casOd && s.stav !== 'zrusen');
       const td = document.createElement('td');
