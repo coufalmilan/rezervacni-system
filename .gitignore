@@ -6,6 +6,8 @@ node_modules/
 .env
 .env.local
 .dev.vars
+*.json.key
+rezervacni-system-*.json
 
 # Wrangler
 .wrangler/
