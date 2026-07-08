@@ -8,10 +8,10 @@
  *   AUTH_SECRET           – náhodný řetězec pro podpis session tokenů (min. 32 znaků)
  *   AUDITORKA_PASSWORDS   – JSON: {"id1":"pbkdf2:sůl:hash","id2":"pbkdf2:sůl:hash"}
  *   ALLOWED_ORIGIN        – URL webu (např. https://rezervace-pohovory.pages.dev)
- *   APPS_SCRIPT_URL       – URL nasazeného Google Apps Script Web App, který posílá
- *                            potvrzovací e-maily (+ .ics) přes Gmail auditorky. Viz SETUP.md krok 4.
- *   APPS_SCRIPT_SECRET    – sdílené heslo mezi Workerem a Apps Scriptem (ochrana proti zneužití
- *                            Apps Script URL cizí osobou k rozesílání e-mailů z vašeho Gmailu)
+ *   BREVO_API_KEY         – API klíč z Brevo (https://app.brevo.com → SMTP & API → API Keys),
+ *                            slouží k odeslání potvrzovacích e-mailů (+ .ics). Odesílací adresa
+ *                            (e-mail auditorky z listu Auditorky) musí být v Brevo předem ověřená
+ *                            jako "Sender" (Contacts → Senders → Add a sender). Viz SETUP.md krok 4.
  */
 
 // ════════════════════════════════════════════════════════════════
@@ -30,6 +30,10 @@ const COLS_REZERVACE = [
   'id', 'slot_id', 'auditorka_id', 'jmeno', 'email', 'kontakt_zpusob', 'telefon',
   'poznamka', 'vytvoreno', 'firma', 'typ_cinnosti', 'stav', 'teams_odkaz',
   'vysledek', 'kurz', 'ostatni_kompetence_ok', 'cas_pro_mzdu_min',
+  // Přidáno ve Fázi 5 (rozšíření) — připojeno na KONEC seznamu sloupců schválně,
+  // aby stávající tabulky se 17 sloupci nebylo potřeba přeskládávat (staré řádky
+  // budou mít token/zdroj jen prázdné, dokud se nedoplní nový sloupec v Sheets).
+  'token', 'zdroj',
 ];
 const COLS_ADMINISTRATIVA = ['id', 'auditorka_id', 'datum', 'vysledek_poznamka', 'cas_pro_mzdu_min', 'firma'];
 
@@ -39,9 +43,14 @@ const STAV_OBSAZENY = 'obsazeny';
 const STAV_ZRUSEN   = 'zrusen';
 
 // Stavy rezervace
-const REZ_REZERVOVANO = 'rezervovano';
-const REZ_USKUTECNENO = 'uskutecneno';
-const REZ_ZRUSENO     = 'zruseno';
+const REZ_REZERVOVANO  = 'rezervovano';
+const REZ_USKUTECNENO  = 'uskutecneno';
+const REZ_ZRUSENO      = 'zruseno';
+const REZ_NEDOSTAVIL   = 'nedostavil_se'; // Fáze 5, funkce 2 — no-show
+
+// Zdroj rezervace (Fáze 5, funkce 3)
+const ZDROJ_WEB   = 'web';
+const ZDROJ_RUCNE = 'rucne';
 
 // Způsob kontaktu, který si lektor vybírá
 const KONTAKT_TELEFON = 'telefon';
@@ -281,6 +290,14 @@ function genId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// Generátor bezpečného tokenu pro samoobslužný odkaz (Fáze 5, funkce 1).
+// Na rozdíl od genId() používá kryptograficky náhodná čísla (crypto.getRandomValues),
+// aby token nešel uhodnout ani odvodit — 24 bajtů (192 bitů) je dostatečně dlouhé.
+function genToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 // ════════════════════════════════════════════════════════════════
 // VALIDACE VSTUPU
 // ════════════════════════════════════════════════════════════════
@@ -475,8 +492,17 @@ async function verifyCsrf(req, env) {
 }
 
 // ════════════════════════════════════════════════════════════════
-// E-MAIL A KALENDÁŘOVÁ POZVÁNKA (.ics) — bez Microsoftu, přes Gmail (Google Apps Script)
+// E-MAIL A KALENDÁŘOVÁ POZVÁNKA (.ics) — přes Brevo (transakční e-mailová služba)
 // ════════════════════════════════════════════════════════════════
+
+// Zakóduje text (i s českou diakritikou) do Base64 — obyčejné btoa() na to nestačí,
+// protože umí jen jednobajtové znaky. Používá se pro .ics přílohu v Brevo API.
+function utf8ToBase64(str) {
+  const bytes = new TextEncoder().encode(str);
+  let binary = '';
+  bytes.forEach(b => { binary += String.fromCharCode(b); });
+  return btoa(binary);
+}
 
 // Jednoduché formátování data "2026-07-02" → "2.7.2026" (bez závislosti na locale enginu)
 function formatDatumCz(iso) {
@@ -534,37 +560,51 @@ function buildIcs({ uid, datum, casOd, casDo, summary, description, location, or
 }
 
 /**
- * Odešle e-mail (volitelně s .ics přílohou) přes Google Apps Script Web App,
- * který běží pod Gmail účtem auditorky (viz SETUP.md krok 4 a soubor apps-script/rezervace-email.gs).
- * Worker sám žádné přihlašovací údaje ke Gmailu nemá — jen zavolá tuto webovou adresu
- * se sdíleným heslem (APPS_SCRIPT_SECRET), a odeslání zajistí skript v Google účtu.
+ * Odešle e-mail (volitelně s .ics přílohou) přes Brevo (https://www.brevo.com).
+ * Odesílací adresa (fromEmail) musí být v Brevo předem ověřená jako "Sender"
+ * (Contacts → Senders → Add a sender) — jinak Brevo odeslání odmítne.
+ * API klíč se čte ze secretu BREVO_API_KEY (Cloudflare).
  */
-async function sendEmail(env, { to, cc, subject, html, icsContent, icsFilename }) {
-  if (!env.APPS_SCRIPT_URL) {
-    throw new Error('E-mailová služba není nastavená (chybí secret APPS_SCRIPT_URL). Viz SETUP.md.');
+async function sendEmail(env, { to, cc, fromEmail, fromName, subject, html, icsContent, icsFilename }) {
+  if (!env.BREVO_API_KEY) {
+    throw new Error('E-mailová služba není nastavená (chybí secret BREVO_API_KEY). Viz SETUP.md.');
   }
-  const payload = {
-    secret: env.APPS_SCRIPT_SECRET || '',
-    to: Array.isArray(to) ? to.join(',') : to,
-    subject,
-    html,
-  };
-  if (cc) payload.cc = Array.isArray(cc) ? cc.join(',') : cc;
-  if (icsContent) {
-    payload.icsContent = icsContent;
-    payload.icsFilename = icsFilename || 'schuzka.ics';
+  if (!fromEmail) {
+    throw new Error('Chybí odesílací adresa (fromEmail) — nelze odeslat e-mail.');
   }
 
-  const r = await fetch(env.APPS_SCRIPT_URL, {
+  const toList = (Array.isArray(to) ? to : [to]).map(e => ({ email: e }));
+
+  const payload = {
+    sender: fromName ? { email: fromEmail, name: fromName } : { email: fromEmail },
+    to: toList,
+    subject,
+    htmlContent: html,
+  };
+  if (cc) {
+    payload.cc = (Array.isArray(cc) ? cc : [cc]).map(e => ({ email: e }));
+  }
+  if (icsContent) {
+    payload.attachment = [{
+      content: utf8ToBase64(icsContent),
+      name: icsFilename || 'schuzka.ics',
+    }];
+  }
+
+  const r = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'api-key': env.BREVO_API_KEY,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
     body: JSON.stringify(payload),
-    redirect: 'follow',
   });
-  if (!r.ok) throw new Error(`Apps Script chyba ${r.status}: ${await r.text()}`);
 
   const data = await r.json().catch(() => ({}));
-  if (!data.ok) throw new Error(data.error || 'Apps Script vrátil neznámou chybu.');
+  if (!r.ok) {
+    throw new Error(`Brevo chyba ${r.status}: ${data.message || JSON.stringify(data)}`);
+  }
   return data;
 }
 
@@ -599,7 +639,15 @@ async function handlePostRezervace(req, env, hdrs, ctx) {
   try { body = await req.json(); }
   catch { return jsonResp({ chyba: 'Neplatný formát požadavku.' }, 400, hdrs); }
 
-  const { slot_id, jmeno, email, kontakt_zpusob, telefon, poznamka } = body;
+  const { slot_id, jmeno, email, kontakt_zpusob, telefon, poznamka, stranka } = body;
+
+  // Honeypot proti botům (Fáze 5, funkce 8): pole "stranka" je ve formuláři skryté
+  // přes CSS, takže ho vyplní jen automatizovaný skript, ne člověk. Když je vyplněné,
+  // tváříme se navenek, že rezervace proběhla úspěšně (aby bot nezjistil, že byl odhalen),
+  // ale nic se ve skutečnosti neuloží ani neobsadí.
+  if (stranka) {
+    return jsonResp({ ok: true, zprava: 'Rezervace byla přijata.', id: genId() }, 201, hdrs);
+  }
 
   // Serverová validace — lze obejít na frontendu, proto musí běžet i tady
   const chyby = {};
@@ -657,13 +705,15 @@ async function handlePostRezervace(req, env, hdrs, ctx) {
     kurz: '',
     ostatni_kompetence_ok: '',
     cas_pro_mzdu_min: '',
+    token: genToken(),
+    zdroj: ZDROJ_WEB,
   };
   await sheetsAppend(env, SHEET_REZERVACE, objToRow(COLS_REZERVACE, novaRezervace));
 
   // Potvrzovací e-mail + .ics pozvánka se posílají automaticky, na pozadí (§8 zadání
   // to jako alternativu k tlačítku výslovně dovoluje). ctx.waitUntil zajistí, že Worker
   // počká s odesláním, ale lektor na to nečeká — dostane odpověď hned. Případná chyba
-  // e-mailové brány (např. výpadek Apps Scriptu) se jen zaloguje a rezervaci nijak nezruší.
+  // e-mailové brány (např. výpadek Brevo) se jen zaloguje a rezervaci nijak nezruší.
   if (ctx && typeof ctx.waitUntil === 'function') {
     ctx.waitUntil(
       posliPotvrzeni(env, novaRezervace, slot).catch(err => {
@@ -677,6 +727,150 @@ async function handlePostRezervace(req, env, hdrs, ctx) {
     zprava: `Termín ${slot.datum} ${slot.cas_od}–${slot.cas_do} byl úspěšně rezervován. Na e-mail vám brzy dorazí potvrzení s pozvánkou do kalendáře.`,
     id,
   }, 201, hdrs);
+}
+
+// ════════════════════════════════════════════════════════════════
+// HANDLERY — SAMOOBSLUHA LEKTORA PŘES TOKEN (Fáze 5, funkce 1)
+// Bez přihlášení — lektor přistupuje přes jednorázový token z potvrzovacího e-mailu.
+// ════════════════════════════════════════════════════════════════
+
+/** GET /api/rezervace/{token} — detail rezervace pro samoobslužnou stránku */
+async function handleGetRezervaceToken(env, token, hdrs) {
+  const rezervace = await readSheet(env, SHEET_REZERVACE, COLS_REZERVACE);
+  const rez = rezervace.find(r => r.token && r.token === token);
+  if (!rez) return jsonResp({ chyba: 'Odkaz je neplatný nebo rezervace už neexistuje.' }, 404, hdrs);
+
+  const sloty = await readSheet(env, SHEET_SLOTY, COLS_SLOTY);
+  const slot = sloty.find(s => s.id === rez.slot_id);
+  const auditorky = await readSheet(env, SHEET_AUDITORKY, COLS_AUDITORKY);
+  const aud = auditorky.find(a => a.id === rez.auditorka_id);
+
+  return jsonResp({
+    rezervace: {
+      jmeno: rez.jmeno,
+      email: rez.email,
+      kontakt_zpusob: rez.kontakt_zpusob,
+      telefon: rez.telefon,
+      stav: rez.stav,
+      datum: slot?.datum || '',
+      cas_od: slot?.cas_od || '',
+      cas_do: slot?.cas_do || '',
+      auditorka: aud?.jmeno || '',
+    },
+  }, 200, hdrs);
+}
+
+/** GET /api/rezervace/{token}/sloty — volné termíny stejné auditorky (pro přesun) */
+async function handleGetVolneSlotyToken(env, token, hdrs) {
+  const rezervace = await readSheet(env, SHEET_REZERVACE, COLS_REZERVACE);
+  const rez = rezervace.find(r => r.token && r.token === token);
+  if (!rez) return jsonResp({ chyba: 'Odkaz je neplatný.' }, 404, hdrs);
+
+  const dnes = new Date().toISOString().split('T')[0];
+  const sloty = await readSheet(env, SHEET_SLOTY, COLS_SLOTY);
+  const volne = sloty
+    .filter(s => s.auditorka_id === rez.auditorka_id && s.stav === STAV_VOLNY && s.datum >= dnes)
+    .sort((a, b) => a.datum !== b.datum ? a.datum.localeCompare(b.datum) : a.cas_od.localeCompare(b.cas_od))
+    .map(({ id, datum, cas_od, cas_do }) => ({ id, datum, cas_od, cas_do }));
+
+  return jsonResp({ sloty: volne }, 200, hdrs);
+}
+
+/** POST /api/rezervace/{token}/zrusit — samoobslužné zrušení termínu */
+async function handleTokenZrusit(env, token, hdrs) {
+  const rezervace = await readSheet(env, SHEET_REZERVACE, COLS_REZERVACE);
+  const rez = rezervace.find(r => r.token && r.token === token);
+  if (!rez) return jsonResp({ chyba: 'Odkaz je neplatný.' }, 404, hdrs);
+  if (rez.stav !== REZ_REZERVOVANO) return jsonResp({ chyba: 'Tuto rezervaci už nelze zrušit — není aktivní.' }, 409, hdrs);
+
+  const rowNum = await findRowNum(env, SHEET_REZERVACE, rez.id);
+  if (rowNum < 0) return jsonResp({ chyba: 'Interní chyba. Zkuste to znovu.' }, 500, hdrs);
+  await sheetsUpdateRow(env, SHEET_REZERVACE, rowNum, objToRow(COLS_REZERVACE, { ...rez, stav: REZ_ZRUSENO }));
+
+  // Uvolnit slot, ať si ho může rezervovat jiný lektor
+  const sloty = await readSheet(env, SHEET_SLOTY, COLS_SLOTY);
+  const slot = sloty.find(s => s.id === rez.slot_id);
+  if (slot) {
+    const slotRow = await findRowNum(env, SHEET_SLOTY, slot.id);
+    if (slotRow > 0) await sheetsUpdateRow(env, SHEET_SLOTY, slotRow, objToRow(COLS_SLOTY, { ...slot, stav: STAV_VOLNY }));
+  }
+
+  // Upozornit auditorku e-mailem (best-effort — chyba se jen zaloguje, zrušení už proběhlo)
+  try {
+    const auditorky = await readSheet(env, SHEET_AUDITORKY, COLS_AUDITORKY);
+    const aud = auditorky.find(a => a.id === rez.auditorka_id);
+    if (aud?.email && slot) {
+      await sendEmail(env, {
+        to: aud.email,
+        fromEmail: aud.email,
+        fromName: aud.jmeno,
+        subject: `Lektor zrušil termín — ${formatDatumCz(slot.datum)} ${slot.cas_od}`,
+        html: `<p>Lektor <strong>${escHtml(rez.jmeno)}</strong> (${escHtml(rez.email)}) zrušil termín
+          <strong>${formatDatumCz(slot.datum)}, ${slot.cas_od}–${slot.cas_do}</strong>. Slot je opět volný v adminu.</p>`,
+      });
+    }
+  } catch (err) {
+    console.error('Upozornění auditorky o zrušení selhalo:', err?.message || err);
+  }
+
+  return jsonResp({ ok: true, zprava: 'Termín byl zrušen. Auditorka byla informována.' }, 200, hdrs);
+}
+
+/** POST /api/rezervace/{token}/presunout — samoobslužný přesun na jiný volný termín */
+async function handleTokenPresunout(req, env, token, hdrs, ctx) {
+  let body; try { body = await req.json(); } catch { return jsonResp({ chyba: 'Neplatný požadavek.' }, 400, hdrs); }
+  const { novy_slot_id } = body;
+  if (!novy_slot_id) return jsonResp({ chyba: 'Vyberte nový termín.' }, 400, hdrs);
+
+  const rezervace = await readSheet(env, SHEET_REZERVACE, COLS_REZERVACE);
+  const rez = rezervace.find(r => r.token && r.token === token);
+  if (!rez) return jsonResp({ chyba: 'Odkaz je neplatný.' }, 404, hdrs);
+  if (rez.stav !== REZ_REZERVOVANO) return jsonResp({ chyba: 'Tuto rezervaci už nelze přesunout — není aktivní.' }, 409, hdrs);
+  if (String(novy_slot_id) === String(rez.slot_id)) return jsonResp({ chyba: 'Vyberte jiný termín, než máte teď.' }, 422, hdrs);
+
+  const sloty = await readSheet(env, SHEET_SLOTY, COLS_SLOTY);
+  const novySlot = sloty.find(s => s.id === String(novy_slot_id));
+  if (!novySlot) return jsonResp({ chyba: 'Termín neexistuje.' }, 404, hdrs);
+  if (novySlot.auditorka_id !== rez.auditorka_id) return jsonResp({ chyba: 'Termín nepatří ke stejné auditorce.' }, 400, hdrs);
+  if (novySlot.stav !== STAV_VOLNY) return jsonResp({ chyba: 'Tento termín je již obsazený. Vyberte jiný.' }, 409, hdrs);
+
+  const staryslot = sloty.find(s => s.id === rez.slot_id);
+
+  // Zamknout nový slot — stejná ochrana proti dvojrezervaci jako u nové rezervace
+  const novyRow = await findRowNum(env, SHEET_SLOTY, novySlot.id);
+  if (novyRow < 0) return jsonResp({ chyba: 'Interní chyba.' }, 500, hdrs);
+  await sheetsUpdateRow(env, SHEET_SLOTY, novyRow, objToRow(COLS_SLOTY, { ...novySlot, stav: STAV_OBSAZENY }));
+  await new Promise(r => setTimeout(r, 250));
+  const slotyPo = await readSheet(env, SHEET_SLOTY, COLS_SLOTY);
+  const check = slotyPo.find(s => s.id === String(novy_slot_id));
+  if (!check || check.stav !== STAV_OBSAZENY) {
+    return jsonResp({ chyba: 'Termín byl právě obsazen někým jiným. Vyberte jiný.' }, 409, hdrs);
+  }
+
+  // Uvolnit starý slot
+  if (staryslot) {
+    const staryRow = await findRowNum(env, SHEET_SLOTY, staryslot.id);
+    if (staryRow > 0) await sheetsUpdateRow(env, SHEET_SLOTY, staryRow, objToRow(COLS_SLOTY, { ...staryslot, stav: STAV_VOLNY }));
+  }
+
+  // Přepsat rezervaci na nový slot — token zůstává stejný, odkaz dál funguje
+  const rezRow = await findRowNum(env, SHEET_REZERVACE, rez.id);
+  const updatedRez = { ...rez, slot_id: novySlot.id };
+  if (rezRow > 0) await sheetsUpdateRow(env, SHEET_REZERVACE, rezRow, objToRow(COLS_REZERVACE, updatedRez));
+
+  // Poslat nové potvrzení s aktuálním termínem (na pozadí, chyba se jen zaloguje)
+  if (ctx && typeof ctx.waitUntil === 'function') {
+    ctx.waitUntil(
+      posliPotvrzeni(env, updatedRez, novySlot).catch(err => {
+        console.error('Potvrzení po přesunu selhalo:', err?.message || err);
+      })
+    );
+  }
+
+  return jsonResp({
+    ok: true,
+    zprava: `Termín byl přesunut na ${formatDatumCz(novySlot.datum)}, ${novySlot.cas_od}–${novySlot.cas_do}. Nové potvrzení vám brzy dorazí e-mailem.`,
+  }, 200, hdrs);
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -884,6 +1078,126 @@ async function handleAdminZrushRezervaci(env, aud, rezId, hdrs) {
   return jsonResp({ ok: true }, 200, hdrs);
 }
 
+/** PUT /api/admin/rezervace/:id/nedostavil-se — Fáze 5, funkce 2 (no-show) */
+async function handleAdminNedostavilSe(env, aud, rezId, hdrs) {
+  const rezervace = await readSheet(env, SHEET_REZERVACE, COLS_REZERVACE);
+  const rez = rezervace.find(r => r.id === rezId && r.auditorka_id === aud.id);
+  if (!rez) return jsonResp({ chyba: 'Rezervace nenalezena.' }, 404, hdrs);
+  if (rez.stav !== REZ_REZERVOVANO) return jsonResp({ chyba: 'Lze označit jen aktivní (dosud nevyřízenou) rezervaci.' }, 409, hdrs);
+
+  const rowNum = await findRowNum(env, SHEET_REZERVACE, rezId);
+  if (rowNum < 0) return jsonResp({ chyba: 'Interní chyba.' }, 500, hdrs);
+  await sheetsUpdateRow(env, SHEET_REZERVACE, rowNum, objToRow(COLS_REZERVACE, { ...rez, stav: REZ_NEDOSTAVIL }));
+  // Slot záměrně zůstává "obsazený" — termín už proběhl (resp. měl proběhnout), jde jen o evidenci.
+  return jsonResp({ ok: true }, 200, hdrs);
+}
+
+/** POST /api/admin/rezervace — ruční přidání rezervace auditorkou (Fáze 5, funkce 3) */
+async function handleAdminCreateRezervace(req, env, aud, hdrs, ctx) {
+  let b; try { b = await req.json(); } catch { return jsonResp({ chyba: 'Neplatný požadavek.' }, 400, hdrs); }
+  const { slot_id, jmeno, email, kontakt_zpusob, telefon, poznamka } = b;
+
+  // Stejná validace jako u veřejné rezervace (§7 zadání)
+  const chyby = {};
+  const e1 = validateJmeno(jmeno);                 if (e1) chyby.jmeno = e1;
+  const e2 = validateEmail(email);                 if (e2) chyby.email = e2;
+  const e3 = validateKontaktZpusob(kontakt_zpusob); if (e3) chyby.kontakt_zpusob = e3;
+  if (kontakt_zpusob === KONTAKT_TELEFON) {
+    const e4 = validateTelefon(telefon);
+    if (e4) chyby.telefon = e4;
+  }
+  const e5 = validatePoznamka(poznamka); if (e5) chyby.poznamka = e5;
+  if (!slot_id) chyby.slot = 'Vyberte termín.';
+  if (Object.keys(chyby).length) return jsonResp({ chyba: 'Opravte chyby ve formuláři.', chyby }, 422, hdrs);
+
+  const sloty = await readSheet(env, SHEET_SLOTY, COLS_SLOTY);
+  const slot = sloty.find(s => s.id === String(slot_id) && s.auditorka_id === aud.id);
+  if (!slot) return jsonResp({ chyba: 'Termín nenalezen.' }, 404, hdrs);
+  if (slot.stav !== STAV_VOLNY) return jsonResp({ chyba: 'Tento termín je již obsazený.' }, 409, hdrs);
+
+  const rowNum = await findRowNum(env, SHEET_SLOTY, slot.id);
+  if (rowNum < 0) return jsonResp({ chyba: 'Interní chyba.' }, 500, hdrs);
+  await sheetsUpdateRow(env, SHEET_SLOTY, rowNum, objToRow(COLS_SLOTY, { ...slot, stav: STAV_OBSAZENY }));
+
+  const id = genId();
+  const telefonNorm = kontakt_zpusob === KONTAKT_TELEFON ? normTelefon(sanitize(telefon)) : '';
+  const novaRezervace = {
+    id, slot_id: slot.id, auditorka_id: aud.id,
+    jmeno: sanitize(jmeno), email: sanitize(email).toLowerCase(),
+    kontakt_zpusob, telefon: telefonNorm, poznamka: sanitize(poznamka || ''),
+    vytvoreno: new Date().toISOString(), firma: '', typ_cinnosti: '', stav: REZ_REZERVOVANO,
+    teams_odkaz: '', vysledek: '', kurz: '', ostatni_kompetence_ok: '', cas_pro_mzdu_min: '',
+    token: genToken(), zdroj: ZDROJ_RUCNE,
+  };
+  await sheetsAppend(env, SHEET_REZERVACE, objToRow(COLS_REZERVACE, novaRezervace));
+
+  // Stejně jako u webové rezervace pošleme potvrzení automaticky na pozadí
+  if (ctx && typeof ctx.waitUntil === 'function') {
+    ctx.waitUntil(
+      posliPotvrzeni(env, novaRezervace, slot).catch(err => {
+        console.error('Automatické odeslání potvrzení (ruční přidání) selhalo:', err?.message || err);
+      })
+    );
+  }
+
+  return jsonResp({ ok: true, id }, 201, hdrs);
+}
+
+/** GET /api/admin/prehled — denní/týdenní agenda na úvod (Fáze 5, funkce 4) */
+async function handleAdminPrehled(env, aud, hdrs) {
+  const dnes = new Date().toISOString().split('T')[0];
+  const zaTydenDate = new Date();
+  zaTydenDate.setDate(zaTydenDate.getDate() + 7);
+  const zaTyden = zaTydenDate.toISOString().split('T')[0];
+
+  const sloty = await readSheet(env, SHEET_SLOTY, COLS_SLOTY);
+  const slotyMap = Object.fromEntries(sloty.map(s => [s.id, s]));
+  const rezervace = await readSheet(env, SHEET_REZERVACE, COLS_REZERVACE);
+
+  const aktivni = rezervace
+    .filter(r => r.auditorka_id === aud.id && r.stav === REZ_REZERVOVANO)
+    .map(r => ({ ...r, slot: slotyMap[r.slot_id] }))
+    .filter(r => r.slot && r.slot.datum >= dnes);
+
+  const zjednodus = r => ({
+    id: r.id, jmeno: r.jmeno, kontakt_zpusob: r.kontakt_zpusob, telefon: r.telefon,
+    datum: r.slot.datum, cas_od: r.slot.cas_od, cas_do: r.slot.cas_do,
+  });
+
+  const dnesni = aktivni.filter(r => r.slot.datum === dnes)
+    .sort((a, b) => a.slot.cas_od.localeCompare(b.slot.cas_od)).map(zjednodus);
+  const tydenni = aktivni.filter(r => r.slot.datum > dnes && r.slot.datum <= zaTyden)
+    .sort((a, b) => a.slot.datum !== b.slot.datum ? a.slot.datum.localeCompare(b.slot.datum) : a.slot.cas_od.localeCompare(b.slot.cas_od))
+    .map(zjednodus);
+
+  return jsonResp({ dnes: dnesni, tyden: tydenni }, 200, hdrs);
+}
+
+/** GET /api/admin/lektor/{email} — historie lektora (Fáze 5, funkce 6) */
+async function handleAdminLektorHistorie(env, aud, emailParam, hdrs) {
+  const emailNorm = decodeURIComponent(emailParam).trim().toLowerCase();
+  if (!emailNorm) return jsonResp({ chyba: 'Chybí e-mail lektora.' }, 400, hdrs);
+
+  const sloty = await readSheet(env, SHEET_SLOTY, COLS_SLOTY);
+  const slotyMap = Object.fromEntries(sloty.map(s => [s.id, s]));
+  const rezervace = await readSheet(env, SHEET_REZERVACE, COLS_REZERVACE);
+
+  const historie = rezervace
+    .filter(r => r.auditorka_id === aud.id && r.email.toLowerCase() === emailNorm)
+    .map(r => ({ ...r, slot: slotyMap[r.slot_id] }))
+    .sort((a, b) => (b.slot?.datum || '').localeCompare(a.slot?.datum || ''));
+
+  return jsonResp({
+    email: emailNorm,
+    pocet: historie.length,
+    rezervace: historie.map(r => ({
+      id: r.id, datum: r.slot?.datum || '', cas_od: r.slot?.cas_od || '', cas_do: r.slot?.cas_do || '',
+      kontakt_zpusob: r.kontakt_zpusob, stav: r.stav, typ_cinnosti: r.typ_cinnosti,
+      firma: r.firma, vysledek: r.vysledek, poznamka: r.poznamka,
+    })),
+  }, 200, hdrs);
+}
+
 /**
  * Sestaví a odešle potvrzovací e-mail s .ics pozvánkou pro danou rezervaci (§8 zadání).
  * Při volbě Teams se použije pevný osobní Teams odkaz auditorky z listu Auditorky.
@@ -907,6 +1221,17 @@ async function posliPotvrzeni(env, rez, slot) {
   const datumTxt = formatDatumCz(slot.datum);
   const casTxt = `${slot.cas_od}–${slot.cas_do}`;
 
+  // Odkaz na samoobslužné zrušení/přesun termínu (Fáze 5, funkce 1) — funguje bez přihlášení,
+  // jen díky náhodnému tokenu uloženému u rezervace. Když ALLOWED_ORIGIN chybí, odkaz se
+  // v e-mailu prostě nezobrazí (email jinak funguje dál).
+  const samoobsluhaOdkaz = env.ALLOWED_ORIGIN && rez.token
+    ? `${env.ALLOWED_ORIGIN.replace(/\/$/, '')}/moje-rezervace/?token=${encodeURIComponent(rez.token)}`
+    : null;
+  const samoobsluhaHtml = samoobsluhaOdkaz
+    ? `<p style="margin-top:1.25rem;">Potřebujete termín zrušit nebo přesunout na jiný čas?
+        <a href="${escHtml(samoobsluhaOdkaz)}">Klikněte sem</a> (bez přihlašování).</p>`
+    : '';
+
   let predmet, misto, popis, html;
   if (jeTeams) {
     predmet = `Schůzka: pohovor s ${auditorkaFull.jmeno}`;
@@ -918,7 +1243,8 @@ async function posliPotvrzeni(env, rez, slot) {
       <p>Schůzka proběhne přes MS Teams na odkazu:<br>
       <a href="${escHtml(auditorkaFull.teams_odkaz)}">${escHtml(auditorkaFull.teams_odkaz)}</a></p>
       <p>V příloze najdete pozvánku do kalendáře (soubor .ics) — otevřením se přidá do vašeho kalendáře
-      (funguje v Google Kalendáři i v Outlooku).</p>`;
+      (funguje v Google Kalendáři i v Outlooku).</p>
+      ${samoobsluhaHtml}`;
   } else {
     predmet = `Telefonický pohovor s ${auditorkaFull.jmeno}`;
     misto = 'Telefonicky';
@@ -928,7 +1254,8 @@ async function posliPotvrzeni(env, rez, slot) {
       <strong>${datumTxt}, ${casTxt}</strong>.</p>
       <p>Auditorka vás bude kontaktovat telefonicky na čísle, které jste uvedli při rezervaci
       (${escHtml(rez.telefon)}).</p>
-      <p>V příloze najdete pozvánku do kalendáře (soubor .ics).</p>`;
+      <p>V příloze najdete pozvánku do kalendáře (soubor .ics).</p>
+      ${samoobsluhaHtml}`;
   }
 
   const ics = buildIcs({
@@ -942,6 +1269,8 @@ async function posliPotvrzeni(env, rez, slot) {
   await sendEmail(env, {
     to: rez.email,
     cc: auditorkaFull.email,
+    fromEmail: auditorkaFull.email,
+    fromName: auditorkaFull.jmeno,
     subject: predmet,
     html,
     icsContent: ics,
@@ -1110,6 +1439,8 @@ async function handleAdminVykazy(req, env, aud, hdrs) {
     'Administrativa': { pocet: 0, minut: 0, castka: 0 },
   };
   let celkemKVyplate = 0;
+  // Rozpad podle firmy/klienta (Fáze 5, funkce 7) — sčítá se ze stejných řádků výkazu
+  const podleFirmy = {};
   radky.forEach(r => {
     if (souhrn[r.typ_agendy]) {
       souhrn[r.typ_agendy].pocet++;
@@ -1117,6 +1448,12 @@ async function handleAdminVykazy(req, env, aud, hdrs) {
       souhrn[r.typ_agendy].castka = round2(souhrn[r.typ_agendy].castka + r.k_vyplate);
     }
     celkemKVyplate = round2(celkemKVyplate + r.k_vyplate);
+
+    const klic = r.firma || '(bez firmy)';
+    if (!podleFirmy[klic]) podleFirmy[klic] = { pocet: 0, minut: 0, castka: 0 };
+    podleFirmy[klic].pocet++;
+    podleFirmy[klic].minut += r.cas_pro_mzdu_min;
+    podleFirmy[klic].castka = round2(podleFirmy[klic].castka + r.k_vyplate);
   });
 
   return jsonResp({
@@ -1129,7 +1466,56 @@ async function handleAdminVykazy(req, env, aud, hdrs) {
     },
     radky,
     souhrn,
+    podle_firmy: podleFirmy,
   }, 200, hdrs);
+}
+
+/** GET /api/admin/vykazy/srovnani?rok=RRRR — srovnání měsíců v roce (Fáze 5, funkce 7) */
+async function handleAdminVykazySrovnani(req, env, aud, hdrs) {
+  const rok = new URL(req.url).searchParams.get('rok') || String(new Date().getFullYear());
+  if (!/^\d{4}$/.test(rok)) return jsonResp({ chyba: 'Neplatný rok (očekává se RRRR).' }, 400, hdrs);
+
+  const auditorky = await readSheet(env, SHEET_AUDITORKY, COLS_AUDITORKY);
+  const auditorkaFull = auditorky.find(a => a.id === aud.id);
+  const sazba = parseFloat(auditorkaFull?.sazba_60min || '0') || 0;
+
+  const sloty = await readSheet(env, SHEET_SLOTY, COLS_SLOTY);
+  const slotyMap = Object.fromEntries(sloty.map(s => [s.id, s]));
+  const rezervace = await readSheet(env, SHEET_REZERVACE, COLS_REZERVACE);
+  const administrativa = await readSheet(env, SHEET_ADMINISTRATIVA, COLS_ADMINISTRATIVA);
+
+  // Připravíme prázdný souhrn pro všech 12 měsíců, ať srovnání ukáže i měsíce bez záznamů
+  const mesice = {};
+  for (let m = 1; m <= 12; m++) {
+    const klic = `${rok}-${String(m).padStart(2, '0')}`;
+    mesice[klic] = { mesic: klic, pocet: 0, minut: 0, castka: 0 };
+  }
+
+  rezervace
+    .filter(r => r.auditorka_id === aud.id && r.stav === REZ_USKUTECNENO)
+    .forEach(r => {
+      const slot = slotyMap[r.slot_id];
+      if (!slot || slot.datum.slice(0, 4) !== rok) return;
+      const klic = slot.datum.slice(0, 7);
+      if (!mesice[klic]) return;
+      const min = parseInt(r.cas_pro_mzdu_min, 10) || 0;
+      mesice[klic].pocet++;
+      mesice[klic].minut += min;
+      mesice[klic].castka = round2(mesice[klic].castka + round2(min / 60 * sazba));
+    });
+
+  administrativa
+    .filter(p => p.auditorka_id === aud.id && p.datum.slice(0, 4) === rok)
+    .forEach(p => {
+      const klic = p.datum.slice(0, 7);
+      if (!mesice[klic]) return;
+      const min = parseInt(p.cas_pro_mzdu_min, 10) || 0;
+      mesice[klic].pocet++;
+      mesice[klic].minut += min;
+      mesice[klic].castka = round2(mesice[klic].castka + round2(min / 60 * sazba));
+    });
+
+  return jsonResp({ rok, mesice: Object.values(mesice) }, 200, hdrs);
 }
 
 /** GET /api/admin/export?mesic=RRRR-MM — CSV export ve stejném rozvržení jako výkaz (bez parametru = export všeho) */
@@ -1202,6 +1588,37 @@ export default {
         return await handlePostRezervace(req, env, hdrs, ctx);
       }
 
+      // ── Samoobsluha lektora přes token (Fáze 5, funkce 1) ──
+      // Společný rate limit "samoobsluha" — token nejde uhodnout, ale i tak omezíme zkoušení nazdařbůh.
+      const mTokenSloty = path.match(/^\/api\/rezervace\/([^/]+)\/sloty$/);
+      if (mTokenSloty && method === 'GET') {
+        if (!checkRateLimit(ip, 'samoobsluha', 30, 60_000)) {
+          return jsonResp({ chyba: 'Příliš mnoho požadavků. Zkuste to za chvíli.' }, 429, hdrs);
+        }
+        return await handleGetVolneSlotyToken(env, mTokenSloty[1], hdrs);
+      }
+      const mTokenZrusit = path.match(/^\/api\/rezervace\/([^/]+)\/zrusit$/);
+      if (mTokenZrusit && method === 'POST') {
+        if (!checkRateLimit(ip, 'samoobsluha', 30, 60_000)) {
+          return jsonResp({ chyba: 'Příliš mnoho požadavků. Zkuste to za chvíli.' }, 429, hdrs);
+        }
+        return await handleTokenZrusit(env, mTokenZrusit[1], hdrs);
+      }
+      const mTokenPresunout = path.match(/^\/api\/rezervace\/([^/]+)\/presunout$/);
+      if (mTokenPresunout && method === 'POST') {
+        if (!checkRateLimit(ip, 'samoobsluha', 30, 60_000)) {
+          return jsonResp({ chyba: 'Příliš mnoho požadavků. Zkuste to za chvíli.' }, 429, hdrs);
+        }
+        return await handleTokenPresunout(req, env, mTokenPresunout[1], hdrs, ctx);
+      }
+      const mTokenDetail = path.match(/^\/api\/rezervace\/([^/]+)$/);
+      if (mTokenDetail && method === 'GET') {
+        if (!checkRateLimit(ip, 'samoobsluha', 30, 60_000)) {
+          return jsonResp({ chyba: 'Příliš mnoho požadavků. Zkuste to za chvíli.' }, 429, hdrs);
+        }
+        return await handleGetRezervaceToken(env, mTokenDetail[1], hdrs);
+      }
+
       // ── Admin přihlášení ───────────────────────────────────
 
       if (method === 'POST' && path === '/api/admin/login') {
@@ -1254,9 +1671,10 @@ export default {
         if (method === 'DELETE') return await handleAdminDeleteSlot(env, aud, mSlot[1], hdrs);
       }
 
-      // Rezervace — nejdřív konkrétnější cesty (/zrusit, /uskutecneno), pak obecné
-      if (path === '/api/admin/rezervace' && method === 'GET') {
-        return await handleAdminGetRezervace(env, aud, hdrs);
+      // Rezervace — nejdřív konkrétnější cesty (/zrusit, /uskutecneno, /nedostavil-se), pak obecné
+      if (path === '/api/admin/rezervace') {
+        if (method === 'GET')  return await handleAdminGetRezervace(env, aud, hdrs);
+        if (method === 'POST') return await handleAdminCreateRezervace(req, env, aud, hdrs, ctx); // Fáze 5, funkce 3
       }
       const mZrush = path.match(/^\/api\/admin\/rezervace\/([^/]+)\/zrusit$/);
       if (mZrush && method === 'PUT') {
@@ -1266,6 +1684,21 @@ export default {
       if (mUskut && method === 'POST') {
         return await handleAdminUskutecneno(req, env, aud, mUskut[1], hdrs);
       }
+      const mNedostavil = path.match(/^\/api\/admin\/rezervace\/([^/]+)\/nedostavil-se$/);
+      if (mNedostavil && method === 'PUT') {
+        return await handleAdminNedostavilSe(env, aud, mNedostavil[1], hdrs); // Fáze 5, funkce 2
+      }
+
+      // Denní/týdenní přehled agendy (Fáze 5, funkce 4)
+      if (path === '/api/admin/prehled' && method === 'GET') {
+        return await handleAdminPrehled(env, aud, hdrs);
+      }
+
+      // Historie lektora podle e-mailu (Fáze 5, funkce 6)
+      const mLektor = path.match(/^\/api\/admin\/lektor\/([^/]+)$/);
+      if (mLektor && method === 'GET') {
+        return await handleAdminLektorHistorie(env, aud, mLektor[1], hdrs);
+      }
 
       // Administrativa
       if (path === '/api/admin/administrativa') {
@@ -1274,6 +1707,7 @@ export default {
       }
 
       // Výkazy a export
+      if (path === '/api/admin/vykazy/srovnani' && method === 'GET') return await handleAdminVykazySrovnani(req, env, aud, hdrs); // Fáze 5, funkce 7
       if (path === '/api/admin/vykazy' && method === 'GET') return await handleAdminVykazy(req, env, aud, hdrs);
       if (path === '/api/admin/export' && method === 'GET') return await handleAdminExport(req, env, aud, hdrs);
 
