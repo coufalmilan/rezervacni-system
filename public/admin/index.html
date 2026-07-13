@@ -20,7 +20,11 @@
     .grid-cell:not(.grid-volny):not(.grid-obsazeny):hover { background: var(--primary-light); }
     .grid-cell.grid-selected { background: var(--primary) !important; }
     .grid-cell.grid-volny { background: var(--secondary-light); cursor: default; }
-    .grid-cell.grid-obsazeny { background: var(--neutral-200); cursor: default; }
+    .grid-cell.grid-obsazeny {
+      background: var(--neutral-200); cursor: default;
+      font-size: .62rem; line-height: 20px; text-align: center; color: var(--neutral-700);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 2px;
+    }
     .grid-cell.grid-weekend { background: var(--neutral-50); }
     .grid-cell.grid-weekend:hover { background: var(--neutral-100); }
     .grid-legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: .8rem; color: var(--neutral-500); align-items: center; }
@@ -35,8 +39,9 @@
     /* ── Tabulka rezervací — pevné šířky sloupců, aby se vešla na celou obrazovku bez posuvníku ── */
     .rez-table { table-layout: fixed; width: 100%; }
     .rez-table th, .rez-table td { white-space: normal; word-break: break-word; overflow-wrap: break-word; }
-    .rez-table td.td-actions { white-space: normal; }
-    .rez-table .btn-sm { margin: .15rem .15rem .15rem 0; }
+    /* Tři akční tlačítka vždy vedle sebe na jedné řádce (bod 3 zadání ZADANI-upravy-admin.md) */
+    .rez-table td.td-actions { display: flex; flex-wrap: nowrap; align-items: center; gap: .3rem; white-space: nowrap; }
+    .btn-xs { padding: .3rem .5rem; font-size: .75rem; gap: .2rem; }
 
     /* Barevné odlišení řádků podle stavu rezervace */
     tr.rez-uskutecneno td { background: var(--success-light); }
@@ -260,6 +265,7 @@
                 <th>Datum</th>
                 <th>Čas</th>
                 <th>Stav</th>
+                <th>Lektor</th>
                 <th>Poznámka</th>
                 <th></th>
               </tr>
@@ -389,6 +395,7 @@
               <select class="form-control" id="uf-cas">
                 <!-- Naplní se JS po 15 minutách -->
               </select>
+              <small id="uf-cas-plan" class="text-muted" style="display:block; margin-top:.25rem;"></small>
             </div>
             <div class="form-group" style="margin-bottom:0;">
               <label>Částka k výplatě</label>
@@ -428,8 +435,8 @@
         <div class="table-wrap">
           <table class="rez-table">
             <colgroup>
-              <col style="width:12%"><col style="width:16%"><col style="width:19%">
-              <col style="width:12%"><col style="width:11%"><col style="width:9%"><col style="width:21%">
+              <col style="width:11%"><col style="width:15%"><col style="width:17%">
+              <col style="width:10%"><col style="width:10%"><col style="width:9%"><col style="width:28%">
             </colgroup>
             <thead>
               <tr>
@@ -718,6 +725,7 @@ function zobrazAdmin() {
   document.getElementById('lektor-odkaz').textContent = odkaz;
 
   nactiSloty();     // Potřeba i na pozadí — rezervace tabulka z toho staví slotyMap
+  nactiRezervace();  // Na pozadí i mimo záložku Rezervace — potřeba pro jména lektorů u obsazených slotů
   nactiPrehled();    // Úvodní záložka
 }
 
@@ -796,6 +804,12 @@ function getWeekStart(offset) {
   return mon;
 }
 
+// Najde jméno lektora aktivní rezervace pro daný slot (pro zobrazení u obsazených termínů — bod 4 zadání)
+function najdiJmenoProSlot(slotId) {
+  const r = rezervaceData.find(x => x.slot_id === slotId && x.stav !== 'zruseno');
+  return r ? r.jmeno : '';
+}
+
 function buildGrid() {
   const ws = getWeekStart(gridWeekOffset);
   const we = new Date(ws); we.setDate(ws.getDate() + 6);
@@ -840,7 +854,13 @@ function buildGrid() {
       td.dataset.do    = casDo;
       if (exist) {
         td.className = 'grid-cell ' + (exist.stav === 'obsazeny' ? 'grid-obsazeny' : 'grid-volny');
-        td.title = exist.stav;
+        if (exist.stav === 'obsazeny') {
+          const jmeno = najdiJmenoProSlot(exist.id);
+          td.textContent = jmeno ? jmeno.split(' ')[0] : '';
+          td.title = jmeno ? `obsazeno — ${jmeno}` : 'obsazeno';
+        } else {
+          td.title = exist.stav;
+        }
       } else {
         td.className = 'grid-cell' + (d >= 5 ? ' grid-weekend' : '');
         if (gridSelected.has(key)) td.classList.add('grid-selected');
@@ -965,6 +985,7 @@ function renderujSloty() {
       <td>${formatDatum(s.datum)}</td>
       <td>${s.cas_od}–${s.cas_do}</td>
       <td>${stavBadge(s.stav)}</td>
+      <td>${s.stav === 'obsazeny' ? esc(najdiJmenoProSlot(s.id)) : '<span class="text-muted">—</span>'}</td>
       <td class="text-muted">${esc(s.poznamka_interni)}</td>
       <td class="td-actions">
         ${s.stav !== 'zrusen' ? `
@@ -1069,6 +1090,10 @@ async function nactiRezervace() {
 
   rezervaceData = data.rezervace || [];
   renderujRezervace();
+  // Rezervace nesou jméno lektora, které se zobrazuje i v záložce Sloty (mřížka + seznam) —
+  // po každém načtení rezervací je potřeba obě znovu překreslit, ať jméno nechybí/není staré.
+  renderujSloty();
+  buildGrid();
 }
 
 // Vrátí rezervaceData po aplikaci filtrů (Fáze 5, funkce 5) — filtruje se v prohlížeči,
@@ -1080,7 +1105,7 @@ function filtrovaneRezervace() {
   const firma   = (document.getElementById('rf-firma').value || '').trim().toLowerCase();
   const stavF   = document.getElementById('rf-stav').value;
 
-  return rezervaceData.filter(r => {
+  const vysledek = rezervaceData.filter(r => {
     const slot = slotyMap[r.slot_id] || {};
     if (hledat && !(`${r.jmeno} ${r.email}`.toLowerCase().includes(hledat))) return false;
     if (datOd && (!slot.datum || slot.datum < datOd)) return false;
@@ -1089,6 +1114,18 @@ function filtrovaneRezervace() {
     if (stavF && r.stav !== stavF) return false;
     return true;
   });
+
+  // Řazení chronologicky podle termínu (datum + čas) — od nejbližšího nahoře.
+  // Rezervace bez termínu (chybějící slot) se řadí až na konec.
+  vysledek.sort((a, b) => {
+    const sa = slotyMap[a.slot_id] || {};
+    const sb = slotyMap[b.slot_id] || {};
+    const ka = sa.datum ? `${sa.datum} ${sa.cas_od || ''}` : '9999-99-99';
+    const kb = sb.datum ? `${sb.datum} ${sb.cas_od || ''}` : '9999-99-99';
+    return ka.localeCompare(kb);
+  });
+
+  return vysledek;
 }
 
 ['rf-hledat','rf-datum-od','rf-datum-do','rf-firma','rf-stav'].forEach(id => {
@@ -1125,9 +1162,9 @@ function renderujRezervace() {
       <td>${rezStavBadge(r.stav)}</td>
       <td class="td-actions">
         ${aktivni ? `
-          <button class="btn btn-sm btn-primary" onclick="otevriUskutForm('${r.id}')">Uskutečněno</button>
-          <button class="btn btn-sm btn-secondary" onclick="oznacNedostavilSe('${r.id}')">Nedostavil se</button>
-          <button class="btn btn-sm btn-danger" onclick="zrushRezervaci('${r.id}')">Zrušit</button>
+          <button class="btn btn-xs btn-primary" onclick="otevriUskutForm('${r.id}')" title="Označit jako uskutečněné">✓ Hotovo</button>
+          <button class="btn btn-xs btn-secondary" onclick="oznacNedostavilSe('${r.id}')" title="Lektor se nedostavil">Nepřišel</button>
+          <button class="btn btn-xs btn-danger" onclick="zrushRezervaci('${r.id}')" title="Zrušit rezervaci">✕ Zrušit</button>
         ` : ''}
       </td>
     `;
@@ -1321,16 +1358,36 @@ function aktualizujUfKontrolaPole() {
 }
 document.getElementById('uf-typ').addEventListener('change', aktualizujUfKontrolaPole);
 
+// Délka slotu v minutách podle plánovaného cas_od/cas_do (pro předvyplnění "čas pro mzdu")
+function timeToMinutes(t) {
+  if (!t) return null;
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+function planovanaDelkaSlotu(slot) {
+  if (!slot || !slot.cas_od || !slot.cas_do) return null;
+  const delka = timeToMinutes(slot.cas_do) - timeToMinutes(slot.cas_od);
+  return delka > 0 ? delka : null;
+}
+
 function otevriUskutForm(id) {
   const r = rezervaceData.find(x => x.id === id);
   if (!r) return;
+  const slot = slotyMap[r.slot_id] || {};
   document.getElementById('uf-id').value = id;
   document.getElementById('uf-typ').value = r.typ_cinnosti || '';
   document.getElementById('uf-firma').value = r.firma || '';
   document.getElementById('uf-kurz').value = r.kurz || '';
   document.getElementById('uf-kompetence').checked = r.ostatni_kompetence_ok === 'ano';
   aktualizujUfKontrolaPole();
-  document.getElementById('uf-cas').value = '15';
+
+  // Předvyplnit čas pro mzdu podle plánované délky slotu (zaokrouhleno na 15 min, v rozsahu 15–240 min).
+  // Auditorka ho pak může navýšit, pokud se schůzka protáhla.
+  const planDelka = planovanaDelkaSlotu(slot);
+  const predvyplnit = planDelka ? Math.min(240, Math.max(15, Math.round(planDelka / 15) * 15)) : 15;
+  document.getElementById('uf-cas').value = String(predvyplnit);
+  document.getElementById('uf-cas-plan').textContent = planDelka ? `plánováno: ${planDelka} min` : '';
+
   document.getElementById('uf-vysledek').value = '';
   document.getElementById('uf-chyba').classList.add('hidden');
   aktualizujUfCastku();
