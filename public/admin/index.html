@@ -435,8 +435,8 @@
         <div class="table-wrap">
           <table class="rez-table">
             <colgroup>
-              <col style="width:11%"><col style="width:15%"><col style="width:17%">
-              <col style="width:10%"><col style="width:10%"><col style="width:9%"><col style="width:28%">
+              <col style="width:14%"><col style="width:17%"><col style="width:20%">
+              <col style="width:12%"><col style="width:12%"><col style="width:9%"><col style="width:16%">
             </colgroup>
             <thead>
               <tr>
@@ -724,8 +724,9 @@ function zobrazAdmin() {
   const odkaz = `${window.location.origin}/rezervace/?auditorka=${session.slug}`;
   document.getElementById('lektor-odkaz').textContent = odkaz;
 
-  nactiSloty();     // Potřeba i na pozadí — rezervace tabulka z toho staví slotyMap
-  nactiRezervace();  // Na pozadí i mimo záložku Rezervace — potřeba pro jména lektorů u obsazených slotů
+  // Nejdřív musí doběhnout sloty (staví slotyMap, ze kterého rezervace čerpají datum/čas termínu) —
+  // teprve pak natáhneme rezervace na pozadí, ať jsou od začátku vidět jména lektorů u obsazených slotů.
+  nactiSloty().then(() => nactiRezervace());
   nactiPrehled();    // Úvodní záložka
 }
 
@@ -856,7 +857,7 @@ function buildGrid() {
         td.className = 'grid-cell ' + (exist.stav === 'obsazeny' ? 'grid-obsazeny' : 'grid-volny');
         if (exist.stav === 'obsazeny') {
           const jmeno = najdiJmenoProSlot(exist.id);
-          td.textContent = jmeno ? jmeno.split(' ')[0] : '';
+          td.textContent = jmeno || '';
           td.title = jmeno ? `obsazeno — ${jmeno}` : 'obsazeno';
         } else {
           td.title = exist.stav;
