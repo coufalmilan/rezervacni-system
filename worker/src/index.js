@@ -519,12 +519,39 @@ function icsEscape(s) {
     .replace(/\n/g, '\\n');
 }
 
-// Datum+čas ve formátu .ics (např. "20260702T090000"). Používáme "plovoucí" čas
-// (bez Z a bez TZID/VTIMEZONE bloku) — kalendářová aplikace ho zobrazí v místním
-// čase prohlížejícího. Zjednodušení, které funguje pro obě strany v ČR/SR.
+// Vrátí, o kolik minut je pražský čas napřed oproti UTC v okamžiku "date"
+// (60 v zimě = SEČ, 120 v létě = SELČ) — počítá se přes Intl, ať se nemusí ručně
+// řešit, kdy přesně přechází letní/zimní čas.
+function prahaOffsetMinut(date) {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Prague', hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  const casti = {};
+  dtf.formatToParts(date).forEach(p => { if (p.type !== 'literal') casti[p.type] = p.value; });
+  // Pro půlnoc umí formatToParts vrátit hodinu "24" místo "00" — opravíme, ať Date.UTC nezlobí.
+  const hod = casti.hour === '24' ? '00' : casti.hour;
+  const jakoUTC = Date.UTC(+casti.year, +casti.month - 1, +casti.day, +hod, +casti.minute, +casti.second);
+  return Math.round((jakoUTC - date.getTime()) / 60000);
+}
+
+// Datum+čas ve formátu .ics jako výslovné UTC (např. "20260724T083000Z").
+// Vstup "datum"/"cas" je pražský místní čas (tak, jak ho auditorka zadala do slotu).
+//
+// Dřív se sem zapisoval tzv. "plovoucí" čas (bez "Z", bez TZID/VTIMEZONE) v naději,
+// že si ho kalendářová aplikace zobrazí v místním čase příjemce. V praxi to ale
+// nefunguje spolehlivě všude — Google Kalendář plovoucí čas bez časového pásma
+// bere jako UTC, takže v létě (SELČ = UTC+2) se schůzka v pozvánce posune o 2 hodiny
+// dopředu oproti tomu, co je vidět v systému. Proto teď čas výslovně přepočítáváme
+// na UTC ("Z" na konci) — to pochopí správně všechny běžné kalendářové aplikace.
 function toIcsDateTime(datum, cas) {
-  const [h, m] = cas.split(':');
-  return `${datum.replace(/-/g, '')}T${h}${m}00`;
+  const [rok, mesic, den] = datum.split('-').map(Number);
+  const [hod, min] = cas.split(':').map(Number);
+  const odhadUTC = Date.UTC(rok, mesic - 1, den, hod, min); // 1) čas, jako by šlo o UTC
+  const offsetMin = prahaOffsetMinut(new Date(odhadUTC));   // 2) aktuální posun Prahy od UTC
+  const skutecneUTC = new Date(odhadUTC - offsetMin * 60000); // 3) skutečný UTC okamžik
+  return skutecneUTC.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
 }
 
 /** Sestaví obsah .ics souboru (kalendářová pozvánka) pro jednu schůzku */
