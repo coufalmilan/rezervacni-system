@@ -39,8 +39,12 @@
     /* ── Tabulka rezervací — pevné šířky sloupců, aby se vešla na celou obrazovku bez posuvníku ── */
     .rez-table { table-layout: fixed; width: 100%; }
     .rez-table th, .rez-table td { white-space: normal; word-break: break-word; overflow-wrap: break-word; }
-    /* Tři akční tlačítka vždy vedle sebe na jedné řádce (bod 3 zadání ZADANI-upravy-admin.md) */
-    .rez-table td.td-actions { display: flex; flex-wrap: nowrap; align-items: center; gap: .3rem; white-space: nowrap; }
+    /* Tři akční tlačítka vždy vedle sebe na jedné řádce (bod 3 zadání ZADANI-upravy-admin.md).
+       Pozor: flex je záměrně na vnitřním <div>, ne přímo na <td> — display:flex přímo na
+       buňce tabulky v některých prohlížečích vyřadí buňku z běžného řádkování tabulky
+       a řádky se pak vizuálně "rozjedou" (překrývání sousedních řádků). */
+    .rez-table td.td-actions { white-space: nowrap; }
+    .td-actions-inner { display: flex; flex-wrap: nowrap; align-items: center; gap: .3rem; }
     .btn-xs { padding: .3rem .5rem; font-size: .75rem; gap: .2rem; }
 
     /* Barevné odlišení řádků podle stavu rezervace */
@@ -1138,9 +1142,10 @@ function filtrovaneRezervace() {
     if (datDo && (!slot.datum || slot.datum > datDo)) return false;
     if (firma && !(r.firma || '').toLowerCase().includes(firma)) return false;
     if (stavF && r.stav !== stavF) return false;
-    // Archiv: rezervace s termínem před dneškem se ve výchozím stavu schovávají.
-    // Rezervace bez dohledatelného termínu (chybějící slot) se v archivu neschovávají.
-    if (!archivF && slot.datum && slot.datum < dnes) return false;
+    // Archiv: schovávají se jen VYŘEŠENÉ rezervace (uskutečněno/zrušeno/nedostavil se)
+    // se starým termínem. Nevyřešené ("rezervováno") zůstávají vidět bez ohledu na datum —
+    // ať se nestane, že stará nedořešená rezervace zmizí z dohledu.
+    if (!archivF && r.stav !== 'rezervovano' && slot.datum && slot.datum < dnes) return false;
     return true;
   });
 
@@ -1191,11 +1196,13 @@ function renderujRezervace() {
       <td>${esc(r.typ_cinnosti) || '<span class="text-muted">—</span>'}</td>
       <td>${rezStavBadge(r.stav)}</td>
       <td class="td-actions">
-        ${aktivni ? `
-          <button class="btn btn-xs btn-primary" onclick="otevriUskutForm('${r.id}')" title="Označit jako uskutečněné">✓ Hotovo</button>
-          <button class="btn btn-xs btn-secondary" onclick="oznacNedostavilSe('${r.id}')" title="Lektor se nedostavil">Nepřišel</button>
-          <button class="btn btn-xs btn-danger" onclick="zrushRezervaci('${r.id}')" title="Zrušit rezervaci">✕ Zrušit</button>
-        ` : ''}
+        <div class="td-actions-inner">
+          ${aktivni ? `
+            <button class="btn btn-xs btn-primary" onclick="otevriUskutForm('${r.id}')" title="Označit jako uskutečněné">✓ Hotovo</button>
+            <button class="btn btn-xs btn-secondary" onclick="oznacNedostavilSe('${r.id}')" title="Lektor se nedostavil">Nepřišel</button>
+            <button class="btn btn-xs btn-danger" onclick="zrushRezervaci('${r.id}')" title="Zrušit rezervaci">✕ Zrušit</button>
+          ` : ''}
+        </div>
       </td>
     `;
     tbody.appendChild(tr);
