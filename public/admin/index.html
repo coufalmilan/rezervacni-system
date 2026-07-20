@@ -247,6 +247,9 @@
         <label style="font-size:.875rem; color:var(--neutral-500); display:flex; align-items:center; gap:.4rem; cursor:pointer;">
           <input type="checkbox" id="show-zrusene"> Zobrazit zrušené termíny
         </label>
+        <label style="font-size:.875rem; color:var(--neutral-500); display:flex; align-items:center; gap:.4rem; cursor:pointer;">
+          <input type="checkbox" id="show-archiv"> Zobrazit archiv (termíny před dneškem)
+        </label>
         <label style="font-size:.875rem; color:var(--neutral-500);">
           Filtr od:
           <input type="date" id="filter-od" class="form-control" style="width:auto; display:inline-block; margin-left:.3rem; padding:.3rem .6rem; font-size:.875rem;">
@@ -317,6 +320,11 @@
               <option value="nedostavil_se">Nedostavil se</option>
               <option value="zruseno">Zrušeno</option>
             </select>
+          </div>
+          <div class="form-group">
+            <label style="display:flex; align-items:center; gap:.4rem; font-weight:400; cursor:pointer;">
+              <input type="checkbox" id="rf-archiv"> Zobrazit archiv (termíny před dneškem)
+            </label>
           </div>
           <button class="btn btn-secondary btn-sm" id="rf-reset">Zrušit filtry</button>
         </div>
@@ -648,6 +656,13 @@ let rezervaceData = []; // Načtené rezervace
 let slotyMap     = {};  // id → slot (pro rezervace)
 let auditorkaSazba = 0; // Kč/60 min přihlášené auditorky — pro dopočet částky u "Uskutečněno"
 
+// Klíč pro uložení session tokenu v prohlížeči (localStorage) — díky tomu refresh stránky
+// auditorku neodhlásí. Samotná cookie na to nestačí: moderní prohlížeče čím dál víc blokují
+// cross-doménové cookies (web běží na jiné doméně než Worker), takže po refreshi by se
+// /api/admin/me neměl jak ověřit. Token je stejný, jaký se stejně posílá přes Authorization
+// hlavičku po celou dobu přihlášení — jen ho teď navíc přežije i obnovení stránky.
+const TOKEN_KEY = 'rezervace_admin_token';
+
 // ─── API helper ──────────────────────────────────────────────────────────────
 const BASE = () => window.API_BASE_URL || 'REPLACE_WITH_WORKER_URL';
 
@@ -689,6 +704,7 @@ document.getElementById('login-form').addEventListener('submit', async function(
       session.slug      = slug;
       session.csrfToken = data.csrfToken;
       session.token     = data.sessionToken;  // Uložíme token pro další requesty
+      localStorage.setItem(TOKEN_KEY, data.sessionToken); // I pro přežití refreshe stránky
       auditorkaSazba    = parseFloat(data.sazba_60min) || 0;
       zobrazAdmin();
     } else {
@@ -708,6 +724,7 @@ document.getElementById('login-form').addEventListener('submit', async function(
 document.getElementById('btn-odhlasit').addEventListener('click', async function() {
   await api('POST', '/api/admin/logout');
   session = { jmeno: null, slug: null, csrfToken: null, token: null };
+  localStorage.removeItem(TOKEN_KEY);
   document.getElementById('admin-app').classList.add('hidden');
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('l-heslo').value = '';
@@ -964,10 +981,15 @@ async function nactiSloty() {
 
 function renderujSloty() {
   const showZrusene = document.getElementById('show-zrusene').checked;
+  const showArchiv  = document.getElementById('show-archiv').checked;
   const filterOd    = document.getElementById('filter-od').value;
+  const dnes        = toLocalISODate(new Date());
 
   let filtered = slotyData.filter(s => {
     if (!showZrusene && s.stav === 'zrusen') return false;
+    // Archiv: termíny před dneškem se ve výchozím stavu schovávají, ať seznam nezabíhá
+    // starými sloty — zaškrtnutím "Zobrazit archiv" jde kdykoli zobrazit zpět.
+    if (!showArchiv && s.datum < dnes) return false;
     if (filterOd && s.datum < filterOd) return false;
     return true;
   });
@@ -1000,6 +1022,7 @@ function renderujSloty() {
 }
 
 document.getElementById('show-zrusene').addEventListener('change', renderujSloty);
+document.getElementById('show-archiv').addEventListener('change', renderujSloty);
 document.getElementById('filter-od').addEventListener('change', renderujSloty);
 
 // Editace slotu
@@ -1105,6 +1128,8 @@ function filtrovaneRezervace() {
   const datDo   = document.getElementById('rf-datum-do').value;
   const firma   = (document.getElementById('rf-firma').value || '').trim().toLowerCase();
   const stavF   = document.getElementById('rf-stav').value;
+  const archivF = document.getElementById('rf-archiv').checked;
+  const dnes    = toLocalISODate(new Date());
 
   const vysledek = rezervaceData.filter(r => {
     const slot = slotyMap[r.slot_id] || {};
@@ -1113,6 +1138,9 @@ function filtrovaneRezervace() {
     if (datDo && (!slot.datum || slot.datum > datDo)) return false;
     if (firma && !(r.firma || '').toLowerCase().includes(firma)) return false;
     if (stavF && r.stav !== stavF) return false;
+    // Archiv: rezervace s termínem před dneškem se ve výchozím stavu schovávají.
+    // Rezervace bez dohledatelného termínu (chybějící slot) se v archivu neschovávají.
+    if (!archivF && slot.datum && slot.datum < dnes) return false;
     return true;
   });
 
@@ -1129,13 +1157,14 @@ function filtrovaneRezervace() {
   return vysledek;
 }
 
-['rf-hledat','rf-datum-od','rf-datum-do','rf-firma','rf-stav'].forEach(id => {
+['rf-hledat','rf-datum-od','rf-datum-do','rf-firma','rf-stav','rf-archiv'].forEach(id => {
   document.getElementById(id).addEventListener('input', renderujRezervace);
   document.getElementById(id).addEventListener('change', renderujRezervace);
 });
 document.getElementById('rf-reset').addEventListener('click', () => {
   ['rf-hledat','rf-datum-od','rf-datum-do','rf-firma'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('rf-stav').value = '';
+  document.getElementById('rf-archiv').checked = false;
   renderujRezervace();
 });
 
@@ -1646,6 +1675,11 @@ async function init() {
     return;
   }
 
+  // Obnovit token uložený z minula, ať ho máme hned k dispozici pro Authorization hlavičku
+  // (viz komentář u TOKEN_KEY výše — bez tohohle by refresh stránky auditorku odhlásil).
+  const ulozenyToken = localStorage.getItem(TOKEN_KEY);
+  if (ulozenyToken) session.token = ulozenyToken;
+
   // Zkusit obnovit session
   try {
     const { ok, data } = await api('GET', '/api/admin/me');
@@ -1654,9 +1688,12 @@ async function init() {
       session.slug      = data.slug;
       session.csrfToken = data.csrfToken;
       session.token     = data.sessionToken;  // Uložíme token pro další requesty
+      localStorage.setItem(TOKEN_KEY, data.sessionToken);
       auditorkaSazba    = parseFloat(data.sazba_60min) || 0;
       zobrazAdmin();
       return;
+    } else {
+      localStorage.removeItem(TOKEN_KEY); // Uložený token už neplatí (expiroval/odhlášení)
     }
   } catch { /* Přihlašovací formulář */ }
 
