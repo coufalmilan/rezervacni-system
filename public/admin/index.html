@@ -46,6 +46,8 @@
     .rez-table td.td-actions { white-space: nowrap; }
     .td-actions-inner { display: flex; flex-wrap: nowrap; align-items: center; gap: .3rem; }
     .btn-xs { padding: .3rem .5rem; font-size: .75rem; gap: .2rem; }
+    /* Tlačítka jen s ikonou (bez textu) — kompaktní akce v přehledu rezervací */
+    .btn-icon { padding: .3rem .45rem; font-size: .85rem; min-width: 1.9rem; justify-content: center; gap: 0; }
 
     /* Barevné odlišení řádků podle stavu rezervace */
     tr.rez-uskutecneno td { background: var(--success-light); }
@@ -447,15 +449,15 @@
         <div class="table-wrap">
           <table class="rez-table">
             <colgroup>
-              <col style="width:14%"><col style="width:17%"><col style="width:20%">
-              <col style="width:12%"><col style="width:12%"><col style="width:9%"><col style="width:16%">
+              <col style="width:12%"><col style="width:20%"><col style="width:22%">
+              <col style="width:9%"><col style="width:14%"><col style="width:10%"><col style="width:13%">
             </colgroup>
             <thead>
               <tr>
                 <th>Termín</th>
                 <th>Jméno</th>
                 <th>Kontakt</th>
-                <th>Firma</th>
+                <th>Způsob</th>
                 <th>Typ</th>
                 <th>Stav</th>
                 <th></th>
@@ -1192,15 +1194,15 @@ function renderujRezervace() {
       <td>${slot.datum ? formatDatum(slot.datum) : '—'}${slot.cas_od ? `<br><span class="text-muted" style="font-size:.8rem;">${slot.cas_od}–${slot.cas_do}</span>` : ''}</td>
       <td><span class="lektor-odkaz-jmeno" onclick="otevriHistorii('${esc(r.email)}')" title="Zobrazit historii lektora"><strong>${esc(r.jmeno)}</strong></span>${r.poznamka ? `<br><span class="text-muted" style="font-size:.8rem;">${esc(r.poznamka)}</span>` : ''}</td>
       <td>${kontaktBunka(r)}</td>
-      <td class="text-muted">${esc(r.firma) || '—'}</td>
+      <td>${zpusobBunka(r)}</td>
       <td>${esc(r.typ_cinnosti) || '<span class="text-muted">—</span>'}</td>
       <td>${rezStavBadge(r.stav)}</td>
       <td class="td-actions">
         <div class="td-actions-inner">
           ${aktivni ? `
-            <button class="btn btn-xs btn-primary" onclick="otevriUskutForm('${r.id}')" title="Označit jako uskutečněné">✓ Hotovo</button>
-            <button class="btn btn-xs btn-secondary" onclick="oznacNedostavilSe('${r.id}')" title="Lektor se nedostavil">Nepřišel</button>
-            <button class="btn btn-xs btn-danger" onclick="zrushRezervaci('${r.id}')" title="Zrušit rezervaci">✕ Zrušit</button>
+            <button class="btn btn-icon btn-primary" onclick="otevriUskutForm('${r.id}')" title="Uskutečněno">✓</button>
+            <button class="btn btn-icon btn-secondary" onclick="oznacNedostavilSe('${r.id}')" title="Nedostavil se">🚫</button>
+            <button class="btn btn-icon btn-danger" onclick="zrushRezervaci('${r.id}')" title="Zrušit rezervaci">✕</button>
           ` : ''}
         </div>
       </td>
@@ -1342,9 +1344,17 @@ document.getElementById('pridat-form').addEventListener('submit', async function
 function kontaktBunka(r) {
   const email = `<a href="mailto:${esc(r.email)}">${esc(r.email)}</a>`;
   if (r.kontakt_zpusob === 'teams') {
-    return `${email}<br><span class="badge badge-blue">MS Teams</span>`;
+    return email;
   }
   return `${email}<br><a href="tel:${esc(r.telefon)}">${esc(r.telefon)}</a>`;
+}
+
+// Krátký příznak způsobu kontaktu (telefon / Teams) — samostatný sloupec, ať se
+// tabulka nezabíhá do šířky a je vidět na první pohled.
+function zpusobBunka(r) {
+  return r.kontakt_zpusob === 'teams'
+    ? '<span class="badge badge-blue">💻 Teams</span>'
+    : '<span class="badge badge-gray">📞 Tel</span>';
 }
 
 function zrushRezervaci(id) {
