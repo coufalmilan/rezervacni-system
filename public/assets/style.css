@@ -235,7 +235,7 @@ p  { color: var(--neutral-700); }
 }
 
 /* ── Tabulka ── */
-.table-wrap { overflow-x: auto; border-radius: var(--radius-sm); border: 1px solid var(--neutral-200); }
+.table-wrap { overflow-x: auto; border-radius: var(--radius-sm); border: 1px solid var(--neutral-200); -webkit-overflow-scrolling: touch; }
 
 table {
   width: 100%;
@@ -565,6 +565,11 @@ tbody tr:hover { background: var(--neutral-50); }
 }
 
 /* ── Responzivita ── */
+@media (max-width: 600px) {
+  .container { padding: 0 .875rem; }
+  .btn-lg { font-size: .9375rem; padding: .75rem 1.25rem; }
+}
+
 @media (max-width: 480px) {
   h1 { font-size: 1.375rem; }
   .card { padding: 1.125rem; }
