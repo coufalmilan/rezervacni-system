@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Ikona pro instalaci admin panelu na plochu telefonu (PWA). Jednoduchý kalendář
+       s fajfkou v brandových barvách UniStudies (modrá #0170B9), ať je hned poznat. -->
+  <rect width="512" height="512" rx="96" fill="#0170B9"/>
+  <rect x="96" y="140" width="320" height="280" rx="28" fill="#FFFFFF"/>
+  <rect x="96" y="140" width="320" height="70" rx="28" fill="#015C94"/>
+  <rect x="96" y="182" width="320" height="28" fill="#015C94"/>
+  <rect x="160" y="108" width="24" height="64" rx="12" fill="#FFFFFF"/>
+  <rect x="328" y="108" width="24" height="64" rx="12" fill="#FFFFFF"/>
+  <path d="M180 300 L235 355 L340 250" stroke="#0170B9" stroke-width="34" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

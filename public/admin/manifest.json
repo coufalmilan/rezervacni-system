@@ -1,0 +1,13 @@
+{
+  "name": "Rezervační systém — Admin",
+  "short_name": "Rezervace",
+  "description": "Správa termínů, rezervací a výkazů — UniStudies Rezervační systém.",
+  "start_url": "/admin/",
+  "scope": "/admin/",
+  "display": "standalone",
+  "background_color": "#F1F1F1",
+  "theme_color": "#0170B9",
+  "icons": [
+    { "src": "/admin/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

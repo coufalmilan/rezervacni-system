@@ -2,10 +2,20 @@
 <html lang="cs">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Admin — Rezervační systém</title>
   <link rel="stylesheet" href="/assets/style.css">
   <meta name="robots" content="noindex,nofollow">
+
+  <!-- Instalace na plochu telefonu (PWA) — funguje i na iPhonu přes Safari:
+       Sdílet → Přidat na plochu. App Store není potřeba. -->
+  <link rel="manifest" href="/admin/manifest.json">
+  <link rel="apple-touch-icon" href="/admin/icon.svg">
+  <link rel="icon" href="/admin/icon.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#0170B9">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Rezervace">
   <style>
     /* ── Mřížka slotů ─────────────────────────────────────────────── */
     .grid-wrap { overflow-x: auto; border: 1px solid var(--neutral-200); border-radius: var(--radius-sm); }
@@ -63,6 +73,20 @@
     .filtry-bar { display:flex; flex-wrap:wrap; gap:.75rem; align-items:flex-end; margin-bottom:1rem; }
     .filtry-bar .form-group { margin:0; }
     .lektor-odkaz-jmeno { cursor:pointer; text-decoration:underline dotted; }
+
+    /* ── Mobil (např. iPhone) ──────────────────────────────────────────
+       Tabulky a mřížka jsou samy o sobě širší než telefon — necháváme je
+       vodorovně posouvatelné (.table-wrap / .grid-wrap mají overflow-x:auto),
+       jen tabulce rezervací dáme minimální šířku, ať se sloupce nezmáčknou
+       do nečitelna a radši se objeví posuvník. */
+    @media (max-width: 640px) {
+      .rez-table { min-width: 620px; }
+      .table-wrap, .grid-wrap { -webkit-overflow-scrolling: touch; }
+      .filtry-bar .form-group { flex: 1 1 100%; }
+      .admin-topbar-title { font-size: .9rem; }
+      .admin-topbar .brand-logo { height: 22px; }
+      .admin-content { padding: 1.25rem .875rem; }
+    }
   </style>
 </head>
 <body>
@@ -262,6 +286,12 @@
         </label>
       </div>
 
+      <!-- Hromadné akce: zaškrtnutím termínů v tabulce jde smazat víc najednou -->
+      <div id="sloty-bulk-bar" class="hidden" style="margin-bottom:.75rem; display:flex; align-items:center; gap:.75rem; background:var(--neutral-100); padding:.5rem .75rem; border-radius:.5rem;">
+        <span id="sloty-bulk-pocet" style="font-size:.875rem; color:var(--neutral-500);">0 vybráno</span>
+        <button type="button" class="btn btn-sm btn-danger" id="btn-smazat-vybrane">🗑 Smazat vybrané</button>
+      </div>
+
       <!-- Tabulka slotů -->
       <div id="sloty-nacitam" style="text-align:center; padding:2rem;">
         <span class="spinner"></span>
@@ -271,6 +301,7 @@
           <table>
             <thead>
               <tr>
+                <th style="width:2rem;"><input type="checkbox" id="sloty-vse" title="Vybrat vše"></th>
                 <th>Datum</th>
                 <th>Čas</th>
                 <th>Stav</th>
@@ -661,6 +692,7 @@ let slotyData    = [];  // Načtené sloty
 let rezervaceData = []; // Načtené rezervace
 let slotyMap     = {};  // id → slot (pro rezervace)
 let auditorkaSazba = 0; // Kč/60 min přihlášené auditorky — pro dopočet částky u "Uskutečněno"
+let slotyVybrane = new Set(); // id zaškrtnutých termínů v záložce Sloty (pro hromadné smazání)
 
 // Klíč pro uložení session tokenu v prohlížeči (localStorage) — díky tomu refresh stránky
 // auditorku neodhlásí. Samotná cookie na to nestačí: moderní prohlížeče čím dál víc blokují
@@ -1008,9 +1040,12 @@ function renderujSloty() {
   document.getElementById('sloty-prazdno').classList.toggle('hidden', filtered.length > 0);
   document.getElementById('sloty-tabulka').classList.remove('hidden');
 
+  // Zrušené termíny nejde hromadně mazat (už smazané jsou) — checkbox se u nich nezobrazuje.
   filtered.forEach(s => {
     const tr = document.createElement('tr');
+    const zaskrtavatelny = s.stav !== 'zrusen';
     tr.innerHTML = `
+      <td>${zaskrtavatelny ? `<input type="checkbox" class="sloty-checkbox" data-id="${s.id}" ${slotyVybrane.has(s.id) ? 'checked' : ''}>` : ''}</td>
       <td>${formatDatum(s.datum)}</td>
       <td>${s.cas_od}–${s.cas_do}</td>
       <td>${stavBadge(s.stav)}</td>
@@ -1025,7 +1060,68 @@ function renderujSloty() {
     `;
     tbody.appendChild(tr);
   });
+
+  // Odeber ze zaškrtnutých ty, co teď nejsou v seznamu (odfiltrované/smazané) — jinak by počet neseděl.
+  const viditelneId = new Set(filtered.filter(s => s.stav !== 'zrusen').map(s => s.id));
+  Array.from(slotyVybrane).forEach(id => { if (!viditelneId.has(id)) slotyVybrane.delete(id); });
+
+  tbody.querySelectorAll('.sloty-checkbox').forEach(cb => {
+    cb.addEventListener('change', () => {
+      if (cb.checked) slotyVybrane.add(cb.dataset.id);
+      else slotyVybrane.delete(cb.dataset.id);
+      aktualizujBulkBar();
+    });
+  });
+
+  const vseCb = document.getElementById('sloty-vse');
+  vseCb.checked = viditelneId.size > 0 && slotyVybrane.size === viditelneId.size;
+  aktualizujBulkBar();
 }
+
+function aktualizujBulkBar() {
+  const bar = document.getElementById('sloty-bulk-bar');
+  const pocet = slotyVybrane.size;
+  bar.classList.toggle('hidden', pocet === 0);
+  document.getElementById('sloty-bulk-pocet').textContent = `${pocet} vybráno`;
+}
+
+document.getElementById('sloty-vse').addEventListener('change', function() {
+  const checked = this.checked;
+  document.querySelectorAll('.sloty-checkbox').forEach(cb => {
+    cb.checked = checked;
+    if (checked) slotyVybrane.add(cb.dataset.id);
+    else slotyVybrane.delete(cb.dataset.id);
+  });
+  aktualizujBulkBar();
+});
+
+document.getElementById('btn-smazat-vybrane').addEventListener('click', function() {
+  const idsVse = Array.from(slotyVybrane);
+  if (idsVse.length === 0) return;
+
+  const obsazene = idsVse.filter(id => slotyMap[id] && slotyMap[id].stav === 'obsazeny');
+  const kSmazani = idsVse.filter(id => !obsazene.includes(id));
+
+  let zprava = `Opravdu smazat ${kSmazani.length} termín(ů)? Budou označeny jako zrušené.`;
+  if (obsazene.length > 0) {
+    zprava += ` ${obsazene.length} vybraný(ch) termín(ů) je obsazených a nelze je smazat — budou přeskočeny (nejdřív zrušte rezervaci).`;
+  }
+  if (kSmazani.length === 0) {
+    alert('Všechny vybrané termíny jsou obsazené, takže je nejde smazat. Nejdřív zrušte příslušné rezervace.');
+    return;
+  }
+
+  potvrdit('Smazat vybrané termíny?', zprava, async () => {
+    let chyby = 0;
+    for (const id of kSmazani) {
+      const { ok } = await api('DELETE', `/api/admin/sloty/${id}`);
+      if (!ok) chyby++;
+    }
+    slotyVybrane.clear();
+    await nactiSloty();
+    if (chyby > 0) alert(`${chyby} termín(ů) se nepodařilo smazat.`);
+  });
+});
 
 document.getElementById('show-zrusene').addEventListener('change', renderujSloty);
 document.getElementById('show-archiv').addEventListener('change', renderujSloty);
